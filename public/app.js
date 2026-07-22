@@ -188,6 +188,7 @@ function update3dProgress(task) {
 function show3dResult(task) {
   const glbUrl = task.modelUrls && task.modelUrls.glb;
   if (!glbUrl) throw new Error('완성된 GLB 모델 주소를 받지 못했어요.');
+  const viewerUrl = task.viewerUrl || glbUrl;
 
   threeDTitle.textContent = '3D 모델이 완성됐어요';
   threeDPercent.textContent = '100%';
@@ -196,7 +197,7 @@ function show3dResult(task) {
   modelViewer.classList.remove('ready');
   modelViewer.setAttribute('camera-controls', '');
   if (task.thumbnailUrl) modelViewer.setAttribute('poster', task.thumbnailUrl);
-  modelViewer.setAttribute('src', glbUrl);
+  modelViewer.setAttribute('src', viewerUrl);
   modelViewer.hidden = false;
   viewerHelp.hidden = false;
   viewerHelp.textContent = '3D 모델을 불러오는 중...';

@@ -1,6 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { Readable } = require('stream');
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC = path.join(__dirname, 'public');
@@ -228,6 +229,7 @@ async function get3d(req, res, taskId) {
       status: result.status || 'PENDING',
       progress: Number.isFinite(result.progress) ? result.progress : 0,
       modelUrls,
+      viewerUrl: modelUrls.glb ? '/api/3d/' + encodeURIComponent(taskId) + '/model.glb' : '',
       thumbnailUrl: result.thumbnail_url || '',
       expiresAt: result.expires_at || null,
       error: result.task_error && result.task_error.message ? result.task_error.message : ''
@@ -238,11 +240,76 @@ async function get3d(req, res, taskId) {
   }
 }
 
+async function stream3dModel(req, res, taskId) {
+  if (!process.env.MESHY_API_KEY) {
+    return json(res, 503, { error: '서버에 MESHY_API_KEY가 설정되지 않았어요.' });
+  }
+  if (!/^[0-9a-f-]{20,64}$/i.test(taskId)) {
+    return json(res, 400, { error: '올바르지 않은 Meshy 작업 ID예요.' });
+  }
+
+  try {
+    const taskRes = await fetch(MESHY_API + '/' + encodeURIComponent(taskId), {
+      headers: { Authorization: 'Bearer ' + process.env.MESHY_API_KEY }
+    });
+    const task = await taskRes.json().catch(() => ({}));
+    if (!taskRes.ok) {
+      return json(res, taskRes.status, { error: meshyErrorMessage(taskRes.status, task) });
+    }
+
+    const glbUrl = task.model_urls && task.model_urls.glb;
+    if (task.status !== 'SUCCEEDED' || !glbUrl) {
+      return json(res, 409, { error: '아직 GLB 모델이 준비되지 않았어요.' });
+    }
+
+    const parsedUrl = new URL(glbUrl);
+    if (parsedUrl.protocol !== 'https:') {
+      return json(res, 502, { error: 'Meshy가 올바른 GLB 주소를 반환하지 않았어요.' });
+    }
+
+    const assetHeaders = { Accept: 'model/gltf-binary, application/octet-stream' };
+    if (req.headers.range) assetHeaders.Range = req.headers.range;
+    const modelRes = await fetch(glbUrl, { headers: assetHeaders });
+    if (!modelRes.ok || !modelRes.body) {
+      return json(res, 502, { error: 'Meshy에서 GLB 파일을 내려받지 못했어요.' });
+    }
+
+    const headers = {
+      'Content-Type': modelRes.headers.get('content-type') || 'model/gltf-binary',
+      'Content-Disposition': 'inline; filename="monggeul-dog.glb"',
+      'Cache-Control': 'private, max-age=300'
+    };
+    for (const name of ['content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
+      const value = modelRes.headers.get(name);
+      if (value) headers[name] = value;
+    }
+
+    res.writeHead(modelRes.status, headers);
+    const stream = Readable.fromWeb(modelRes.body);
+    stream.on('error', error => {
+      console.error(error);
+      res.destroy(error);
+    });
+    stream.pipe(res);
+  } catch (error) {
+    console.error(error);
+    if (!res.headersSent) {
+      json(res, 500, { error: error.message || '3D 모델 파일을 불러오지 못했어요.' });
+    } else {
+      res.destroy(error);
+    }
+  }
+}
+
 const server = http.createServer((req, res) => {
   if (req.method === 'POST' && req.url === '/api/generate') return generate(req, res);
   if (req.method === 'POST' && req.url === '/api/3d') return create3d(req, res);
 
-  const meshyTaskMatch = req.method === 'GET' && req.url.split('?')[0].match(/^\/api\/3d\/([0-9a-f-]+)$/i);
+  const cleanUrl = req.url.split('?')[0];
+  const meshyModelMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/3d\/([0-9a-f-]+)\/model\.glb$/i);
+  if (meshyModelMatch) return stream3dModel(req, res, meshyModelMatch[1]);
+
+  const meshyTaskMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/3d\/([0-9a-f-]+)$/i);
   if (meshyTaskMatch) return get3d(req, res, meshyTaskMatch[1]);
 
   if (req.method !== 'GET') return json(res, 405, { error: '허용되지 않은 요청이에요.' });
