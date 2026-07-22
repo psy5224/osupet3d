@@ -18,6 +18,7 @@ const threeDPercent = document.querySelector('#threeDPercent');
 const threeDStatus = document.querySelector('#threeDStatus');
 const threeDProgressBar = document.querySelector('#threeDProgressBar');
 const modelViewer = document.querySelector('#modelViewer');
+const viewerHelp = document.querySelector('#viewerHelp');
 const modelLinks = document.querySelector('#modelLinks');
 const signedNote = document.querySelector('#signedNote');
 
@@ -119,8 +120,11 @@ function reset3d() {
   threeDStatus.textContent = 'Meshy 작업을 준비하는 중...';
   threeDProgressBar.style.width = '0%';
   modelViewer.hidden = true;
+  modelViewer.classList.remove('ready');
   modelViewer.removeAttribute('src');
   modelViewer.removeAttribute('poster');
+  viewerHelp.hidden = true;
+  viewerHelp.textContent = '3D 모델을 불러오는 중...';
   modelLinks.hidden = true;
   modelLinks.replaceChildren();
   signedNote.hidden = true;
@@ -188,10 +192,14 @@ function show3dResult(task) {
   threeDTitle.textContent = '3D 모델이 완성됐어요';
   threeDPercent.textContent = '100%';
   threeDProgressBar.style.width = '100%';
-  threeDStatus.textContent = '마우스나 손가락으로 돌려서 확인해보세요.';
-  modelViewer.src = glbUrl;
-  if (task.thumbnailUrl) modelViewer.poster = task.thumbnailUrl;
+  threeDStatus.textContent = '회전 가능한 3D 모델을 불러오는 중...';
+  modelViewer.classList.remove('ready');
+  modelViewer.setAttribute('camera-controls', '');
+  if (task.thumbnailUrl) modelViewer.setAttribute('poster', task.thumbnailUrl);
+  modelViewer.setAttribute('src', glbUrl);
   modelViewer.hidden = false;
+  viewerHelp.hidden = false;
+  viewerHelp.textContent = '3D 모델을 불러오는 중...';
 
   const labels = { glb: 'GLB 저장', fbx: 'FBX 저장', obj: 'OBJ 저장', usdz: 'USDZ 저장', stl: 'STL 저장' };
   modelLinks.replaceChildren();
@@ -208,6 +216,31 @@ function show3dResult(task) {
   signedNote.hidden = false;
   make3dButton.textContent = '3D 다시 만들기';
 }
+
+modelViewer.addEventListener('progress', event => {
+  if (modelViewer.hidden || modelViewer.classList.contains('ready')) return;
+  const progress = Math.round(((event.detail && event.detail.totalProgress) || 0) * 100);
+  viewerHelp.textContent = '3D 모델을 불러오는 중... ' + progress + '%';
+});
+
+modelViewer.addEventListener('load', () => {
+  if (modelViewer.hidden) return;
+  modelViewer.classList.add('ready');
+  modelViewer.setAttribute('camera-controls', '');
+  threeDStatus.textContent = '모델 위에서 클릭한 채 좌우로 드래그해 돌려보세요.';
+  viewerHelp.textContent = '🖱 클릭 + 드래그: 회전 · 휠: 확대/축소';
+});
+
+modelViewer.addEventListener('error', () => {
+  if (modelViewer.hidden) return;
+  modelViewer.classList.remove('ready');
+  threeDStatus.textContent = '3D 모델 파일을 불러오지 못했어요. GLB 저장 버튼으로 파일을 확인해주세요.';
+  viewerHelp.textContent = '뷰어 로드 실패 · 아래의 GLB 저장을 이용해주세요.';
+});
+
+modelViewer.addEventListener('pointerdown', () => {
+  modelViewer.focus({ preventScroll: true });
+});
 
 async function poll3d(taskId, run) {
   for (let attempt = 0; attempt < 360; attempt += 1) {

@@ -69,12 +69,20 @@
             id="modelViewer"
             hidden
             camera-controls
+            disable-pan
+            disable-tap
             auto-rotate
+            auto-rotate-delay="0"
+            rotation-per-second="20deg"
+            interaction-prompt="auto"
+            interaction-prompt-style="wiggle"
             shadow-intensity="1"
             environment-image="neutral"
-            touch-action="pan-y"
+            touch-action="none"
+            tabindex="0"
             alt="완성된 강아지 3D 모델"
           ></model-viewer>
+          <p class="viewer-help" id="viewerHelp" hidden>3D 모델을 불러오는 중...</p>
           <div id="modelLinks" class="model-links" hidden></div>
           <p class="signed-note" id="signedNote" hidden>다운로드 링크는 유효기간이 있으니 완성 후 바로 저장해주세요.</p>
         </section>
