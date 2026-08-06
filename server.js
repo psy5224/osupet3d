@@ -245,7 +245,24 @@ async function get3d(req, res, taskId) {
   }
 }
 
-async function stream3dModel(req, res, taskId) {
+function fileTimestamp(date = new Date()) {
+  const values = {};
+  for (const part of new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(date)) {
+    if (part.type !== 'literal') values[part.type] = part.value;
+  }
+  return values.year + values.month + values.day + '_' + values.hour + values.minute + values.second;
+}
+
+async function stream3dAsset(req, res, taskId, format, downloadStamp) {
   if (!process.env.MESHY_API_KEY) {
     return json(res, 503, { error: '서버에 MESHY_API_KEY가 설정되지 않았어요.' });
   }
@@ -262,27 +279,30 @@ async function stream3dModel(req, res, taskId) {
       return json(res, taskRes.status, { error: meshyErrorMessage(taskRes.status, task) });
     }
 
-    const glbUrl = task.model_urls && task.model_urls.glb;
-    if (task.status !== 'SUCCEEDED' || !glbUrl) {
-      return json(res, 409, { error: '아직 GLB 모델이 준비되지 않았어요.' });
+    const assetUrl = task.model_urls && task.model_urls[format];
+    if (task.status !== 'SUCCEEDED' || !assetUrl) {
+      return json(res, 409, { error: '아직 ' + format.toUpperCase() + ' 모델이 준비되지 않았어요.' });
     }
 
-    const parsedUrl = new URL(glbUrl);
+    const parsedUrl = new URL(assetUrl);
     if (parsedUrl.protocol !== 'https:') {
-      return json(res, 502, { error: 'Meshy가 올바른 GLB 주소를 반환하지 않았어요.' });
+      return json(res, 502, { error: 'Meshy가 올바른 모델 주소를 반환하지 않았어요.' });
     }
 
-    const assetHeaders = { Accept: 'model/gltf-binary, application/octet-stream' };
+    const assetHeaders = { Accept: '*/*' };
     if (req.headers.range) assetHeaders.Range = req.headers.range;
-    const modelRes = await fetch(glbUrl, { headers: assetHeaders });
+    const modelRes = await fetch(assetUrl, { headers: assetHeaders });
     if (!modelRes.ok || !modelRes.body) {
-      return json(res, 502, { error: 'Meshy에서 GLB 파일을 내려받지 못했어요.' });
+      return json(res, 502, { error: 'Meshy에서 ' + format.toUpperCase() + ' 파일을 내려받지 못했어요.' });
     }
 
+    const isDownload = Boolean(downloadStamp);
+    const safeStamp = /^\d{8}_\d{6}$/.test(downloadStamp || '') ? downloadStamp : fileTimestamp();
+    const filename = isDownload ? 'pet3D_' + safeStamp + '.' + format : 'pet3D_preview.' + format;
     const headers = {
-      'Content-Type': modelRes.headers.get('content-type') || 'model/gltf-binary',
-      'Content-Disposition': 'inline; filename="monggeul-pet.glb"',
-      'Cache-Control': 'private, max-age=300'
+      'Content-Type': modelRes.headers.get('content-type') || 'application/octet-stream',
+      'Content-Disposition': (isDownload ? 'attachment' : 'inline') + '; filename="' + filename + '"',
+      'Cache-Control': isDownload ? 'private, no-store' : 'private, max-age=300'
     };
     for (const name of ['content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
       const value = modelRes.headers.get(name);
@@ -311,9 +331,15 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && req.url === '/api/3d') return create3d(req, res);
   if (req.method === 'GET' && req.url.split('?')[0] === '/api/version') return json(res, 200, APP_INFO);
 
-  const cleanUrl = req.url.split('?')[0];
-  const meshyModelMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/3d\/([0-9a-f-]+)\/model\.glb$/i);
-  if (meshyModelMatch) return stream3dModel(req, res, meshyModelMatch[1]);
+  const requestUrl = new URL(req.url, 'http://localhost');
+  const cleanUrl = requestUrl.pathname;
+  const meshyModelMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/3d\/([0-9a-f-]+)\/model\.(glb|fbx|obj|usdz|stl)$/i);
+  if (meshyModelMatch) {
+    const stamp = requestUrl.searchParams.get('download') === '1'
+      ? requestUrl.searchParams.get('stamp') || fileTimestamp()
+      : '';
+    return stream3dAsset(req, res, meshyModelMatch[1], meshyModelMatch[2].toLowerCase(), stamp);
+  }
 
   const meshyTaskMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/3d\/([0-9a-f-]+)$/i);
   if (meshyTaskMatch) return get3d(req, res, meshyTaskMatch[1]);

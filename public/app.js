@@ -31,6 +31,23 @@ let toastTimer;
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+function fileTimestamp(date = new Date()) {
+  const values = {};
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(date).forEach(part => {
+    if (part.type !== 'literal') values[part.type] = part.value;
+  });
+  return values.year + values.month + values.day + '_' + values.hour + values.minute + values.second;
+}
+
 const say = message => {
   clearTimeout(toastTimer);
   toast.textContent = message;
@@ -208,9 +225,16 @@ function show3dResult(task) {
   Object.entries(task.modelUrls || {}).forEach(([format, url]) => {
     if (!labels[format] || typeof url !== 'string') return;
     const link = document.createElement('a');
-    link.href = url;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
+    const localDownload = task.taskId
+      ? '/api/3d/' + encodeURIComponent(task.taskId) + '/model.' + format + '?download=1'
+      : url;
+    link.href = localDownload;
+    link.download = 'pet3D_' + fileTimestamp() + '.' + format;
+    link.addEventListener('click', () => {
+      const stamp = fileTimestamp();
+      link.download = 'pet3D_' + stamp + '.' + format;
+      if (task.taskId) link.href = localDownload + '&stamp=' + stamp;
+    });
     link.textContent = labels[format];
     modelLinks.append(link);
   });
@@ -299,6 +323,9 @@ async function create3d() {
 make.onclick = generate;
 document.querySelector('#retry').onclick = generate;
 make3dButton.onclick = create3d;
+downloadImage.addEventListener('click', () => {
+  downloadImage.download = 'pet2d_' + fileTimestamp() + '.png';
+});
 update();
 
 async function loadVersion() {
