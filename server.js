@@ -5,6 +5,11 @@ const { Readable } = require('stream');
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC = path.join(__dirname, 'public');
+const APP_PACKAGE = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+const APP_INFO = {
+  version: APP_PACKAGE.version || '1.0.0',
+  updatedAt: APP_PACKAGE.appUpdatedAt || null
+};
 const STYLE_REFERENCE = 'D:\\Libraries\\Downloads\\magnific_img1-._SObMbD5Ub8.png';
 const MESHY_API = 'https://api.meshy.ai/openapi/v1/image-to-3d';
 const MIME = {
@@ -68,13 +73,13 @@ async function generate(req, res) {
     const body = await readJson(req);
     const images = body.images;
     if (!Array.isArray(images) || images.length < 1 || images.length > 6) {
-      return json(res, 400, { error: '강아지 사진을 1장 이상 6장 이하로 넣어주세요.' });
+      return json(res, 400, { error: '강아지 또는 고양이 사진을 1장 이상 6장 이하로 넣어주세요.' });
     }
 
     const form = new FormData();
     images.forEach((value, index) => {
       const file = imageBlob(value);
-      form.append('image[]', file.blob, 'dog-' + (index + 1) + '.' + file.ext);
+      form.append('image[]', file.blob, 'pet-' + (index + 1) + '.' + file.ext);
     });
 
     const deployedStylePath = path.join(PUBLIC, 'style-reference.png');
@@ -84,38 +89,38 @@ async function generate(req, res) {
       form.append('image[]', new Blob([fs.readFileSync(stylePath)], { type: 'image/png' }), 'style-reference.png');
     }
 
-    const dogInputMap = images
-      .map((_, index) => 'Image ' + (index + 1) + ': a photograph of the same target dog; use only for identity and anatomy.')
+    const petInputMap = images
+      .map((_, index) => 'Image ' + (index + 1) + ': a photograph of the same target pet, which is either one dog or one cat; use only for species, identity, and anatomy.')
       .join('\n');
     const styleInputMap = hasStyleReference
-      ? '\nImage ' + (images.length + 1) + ': STYLE REFERENCE ONLY. Apply its visual language to the target dog, but do not copy its dog, breed, colors, markings, pose, expression, composition, or checkerboard background.'
+      ? '\nImage ' + (images.length + 1) + ': STYLE REFERENCE ONLY. Apply only its visual language to the target pet. Never copy or infer the reference animal\'s species, breed, colors, markings, anatomy, pose, expression, composition, or checkerboard background.'
       : '';
     const prompt = `GOAL - HIGHEST PRIORITY
-Create one irresistibly cute, warm, fairy-tale children's picture-book illustration of the same target dog in Images 1-${images.length}. The result must immediately feel like a lovable main character from a premium illustrated storybook, never merely a traced or filtered photograph.
+First determine from Images 1-${images.length} whether the target pet is a dog or a cat. Then create one irresistibly cute, warm, fairy-tale children's picture-book illustration of that exact same pet. The result must immediately feel like a lovable main character from a premium illustrated storybook, never merely a traced or filtered photograph.
 
 INPUT ROLES
-${dogInputMap}${styleInputMap}
+${petInputMap}${styleInputMap}
 
-TARGET DOG — PRESERVE
-Faithfully preserve the photographed dog's recognizable identity: exact coat colors and markings, breed traits, ear shape, muzzle, eye color, body proportions, leg length, paws, tail shape, fur length and texture, and every distinctive feature. Combine the photos only to understand this one dog. Do not average away unique markings or replace them with features from the style reference.
+SPECIES AND TARGET IDENTITY — MANDATORY
+The output must remain the same species as the photographed pet: dog stays dog, cat stays cat. Never turn a cat into a dog, a dog into a cat, or create a hybrid. Faithfully preserve the pet's recognizable identity: exact coat colors, patches, stripes and markings; breed or mixed-breed traits; ear shape and position; muzzle or feline whisker-pad shape; eye color and shape; nose color; body proportions; leg length; paw shape; tail length, thickness and natural shape; fur length and texture; whiskers for cats; and every distinctive feature. Combine the photos only to understand this one pet. Do not average away unique markings or borrow any animal features from the style reference. The mandatory pose instructions below override the head angle, leg placement, and tail position seen in any input image, but never override the pet's anatomy or identity.
 
 STYLE — MANDATORY
 Match the visual style of the STYLE REFERENCE as closely as possible: a charming hand-painted children's storybook character illustration; bold, softly irregular dark ink outlines; rounded and appealing shapes; layered fur tufts drawn with expressive scalloped brush shapes; translucent watercolor washes mixed with soft opaque gouache-like shading; visible colored-pencil and paper texture; gentle tonal modeling; warm golden-brown edge highlights; rich but cozy colors; two large glossy expressive eyes; polished professional picture-book finish. It must feel hand-drawn, warm, whimsical, dimensional, and distinctly fairy-tale-like. Do not make it a flat vector icon, generic digital cartoon, anime, 3D render, photograph, or photorealistic painting.
 
 CUTE CHARACTER DIRECTION - MANDATORY
-Make the dog exceptionally adorable and emotionally warm while keeping it unmistakably the photographed dog. Use softly rounded contours, a subtly oversized head, two large luminous glossy eyes, a small softly rounded muzzle, plush layered fur, compact balanced proportions, and a gentle happy expression. Keep all exaggeration tasteful and picture-book-like so breed traits, markings, and identity remain accurate. Avoid a stern, aggressive, uncanny, anatomically distorted, overly realistic, or generic mascot appearance.
+Make the pet exceptionally adorable and emotionally warm while keeping it unmistakably the photographed dog or cat. Use softly rounded contours, a subtly oversized head, two large luminous glossy eyes, species-appropriate facial anatomy, plush layered fur, compact balanced proportions, and a calm, gentle, sweet expression. For a cat, retain natural feline eyes, whisker pads, whiskers, nose, paws, and tail; do not give it a dog's muzzle, grin, floppy dog ears, or dog-like body. For a dog, retain natural canine muzzle, ears, paws, and proportions. Keep all exaggeration tasteful and picture-book-like so species, breed traits, markings, and identity remain accurate. Avoid a stern, aggressive, uncanny, anatomically distorted, overly realistic, or generic mascot appearance.
 
 CANVAS AND BACKGROUND — MANDATORY
-Exact 1:1 square composition. Pure solid white (#FFFFFF) background only. One dog only, full body, centered, with generous white breathing room on every side so ears, nose, paws, and tail are never cropped. No scenery, props, cast shadow, ground shadow, floor line, texture, border, transparency, or checkerboard.
+Exact 1:1 square composition. Pure solid white (#FFFFFF) background only. One pet only, full body, centered, with generous white breathing room on every side so ears, whiskers, nose, paws, and tail are never cropped. No scenery, props, cast shadow, ground shadow, floor line, texture, border, transparency, or checkerboard.
 
 POSE — MANDATORY
-Match a full-body front three-quarter portrait angle. Position the dog's body at approximately 30-45 degrees to the camera, with the hindquarters receding toward the right side of the canvas. Turn the head gently toward the camera so the face is nearly frontal, both eyes are clearly visible, the nose is centered, and the chest plus one side of the torso can be seen. The dog looks directly at the camera with a calm, sweet expression. Use a camera at the dog's eye level with a natural neutral perspective, as in a professional pet portrait. No exact side profile, no rear view, no top-down view, no low-angle view, no extreme wide-angle distortion, and no cropped body.
+Use an exact straight-on, full-body frontal portrait. The pet's chest, shoulders, hips, and face must be squared directly toward the camera with no body turn, torso twist, or three-quarter angle. Center the nose and chest on the vertical axis. Both eyes must be clearly visible and level. Keep the head perfectly upright, level, and centered over the body: no head tilt, no curious head cock, no head roll, and no turn to either side. The pet looks directly into the camera with a calm, sweet expression. Use a camera at the pet's eye level with a natural neutral perspective, as in a professional pet portrait. No three-quarter view, side profile, rear view, top-down view, low-angle view, wide-angle distortion, or cropped body.
 
 STANCE - MANDATORY
-Show the dog calmly standing completely still in a neutral, natural show-stance, regardless of any action poses in the input photos or style reference. All four paws must be firmly planted on the same invisible horizontal ground plane, with legs naturally straight but relaxed, body level, weight evenly balanced, head held calmly, and tail resting in its natural position. Show natural depth between the near and far legs in the three-quarter view, with no paw lifted. No walking, trotting, running, jumping, leaping, floating, sitting, lying down, crouching, play bow, rearing, dancing, or dynamic action pose. Do not draw motion lines or wind-swept motion.
+Show the pet calmly standing completely still in a neutral, natural species-appropriate frontal stance, regardless of any pose in the input photos or style reference. All four legs and all four paws must be completely visible as four distinct, anatomically correct limbs with clear white separation and no overlap. Place the two front legs naturally straight beneath the shoulders and the two hind legs slightly wider so neither hind leg nor hind paw is hidden behind a front leg. All four paws must be firmly planted on the same invisible horizontal ground plane, with the body level and weight evenly balanced. The tail must always be raised upward and fully visible behind or beside the body in a natural species-appropriate upward curve; preserve its true length, thickness, fur, and shape, including a naturally short tail, but never let it hang down, tuck between the legs, lie on the floor, disappear behind the body, or be cropped. No paw may be lifted. No walking, trotting, running, jumping, leaping, floating, sitting, lying down, crouching, play bow, rearing, dancing, dynamic action pose, head tilt, motion lines, or wind-swept motion.
 
 FINAL CONSTRAINTS
-No words, letters, logo, watermark, frame, extra animal, extra limb, checkerboard, or photorealism. Identity comes only from Images 1-${images.length}; visual style comes only from the final STYLE REFERENCE image.`;
+No words, letters, logo, watermark, frame, extra animal, extra limb, checkerboard, or photorealism. Species and identity come only from Images 1-${images.length}; visual style comes only from the final STYLE REFERENCE image.`;
 
     form.append('prompt', prompt);
     form.append('model', 'gpt-image-2');
@@ -276,7 +281,7 @@ async function stream3dModel(req, res, taskId) {
 
     const headers = {
       'Content-Type': modelRes.headers.get('content-type') || 'model/gltf-binary',
-      'Content-Disposition': 'inline; filename="monggeul-dog.glb"',
+      'Content-Disposition': 'inline; filename="monggeul-pet.glb"',
       'Cache-Control': 'private, max-age=300'
     };
     for (const name of ['content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
@@ -304,6 +309,7 @@ async function stream3dModel(req, res, taskId) {
 const server = http.createServer((req, res) => {
   if (req.method === 'POST' && req.url === '/api/generate') return generate(req, res);
   if (req.method === 'POST' && req.url === '/api/3d') return create3d(req, res);
+  if (req.method === 'GET' && req.url.split('?')[0] === '/api/version') return json(res, 200, APP_INFO);
 
   const cleanUrl = req.url.split('?')[0];
   const meshyModelMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/3d\/([0-9a-f-]+)\/model\.glb$/i);

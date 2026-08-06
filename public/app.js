@@ -21,6 +21,7 @@ const modelViewer = document.querySelector('#modelViewer');
 const viewerHelp = document.querySelector('#viewerHelp');
 const modelLinks = document.querySelector('#modelLinks');
 const signedNote = document.querySelector('#signedNote');
+const appVersion = document.querySelector('#appVersion');
 
 let photos = [];
 let currentImage = '';
@@ -42,7 +43,7 @@ function update() {
   photos.forEach((photo, index) => {
     const el = document.createElement('div');
     el.className = 'thumb';
-    el.innerHTML = '<img src="' + photo.data + '" alt="강아지 사진 ' + (index + 1) + '"><button aria-label="사진 삭제">×</button>';
+    el.innerHTML = '<img src="' + photo.data + '" alt="반려동물 사진 ' + (index + 1) + '"><button aria-label="사진 삭제">×</button>';
     el.querySelector('button').onclick = () => {
       photos.splice(index, 1);
       update();
@@ -177,7 +178,7 @@ function update3dProgress(task) {
   const progress = Math.max(0, Math.min(100, Number(task.progress) || 0));
   const statusMessages = {
     PENDING: 'Meshy 작업 순서를 기다리고 있어요...',
-    IN_PROGRESS: '강아지의 형태와 질감을 3D로 만들고 있어요...',
+    IN_PROGRESS: '반려동물의 형태와 질감을 3D로 만들고 있어요...',
     SUCCEEDED: '3D 모델이 완성됐어요.'
   };
   threeDPercent.textContent = Math.round(progress) + '%';
@@ -266,7 +267,7 @@ async function poll3d(taskId, run) {
 }
 
 async function create3d() {
-  if (!currentImage) return say('먼저 강아지 이미지를 만들어주세요.');
+  if (!currentImage) return say('먼저 반려동물 이미지를 만들어주세요.');
 
   reset3d();
   const run = meshyRun;
@@ -299,3 +300,30 @@ make.onclick = generate;
 document.querySelector('#retry').onclick = generate;
 make3dButton.onclick = create3d;
 update();
+
+async function loadVersion() {
+  try {
+    const response = await fetch('/api/version', { cache: 'no-store' });
+    const data = await response.json();
+    if (!response.ok) throw new Error('버전 정보를 불러오지 못했어요.');
+
+    const updated = new Date(data.updatedAt);
+    const formatted = Number.isNaN(updated.getTime())
+      ? '확인할 수 없음'
+      : new Intl.DateTimeFormat('ko-KR', {
+          timeZone: 'Asia/Seoul',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false
+        }).format(updated);
+    appVersion.textContent = '버전 v' + data.version + ' · 최종 수정 ' + formatted + ' (KST)';
+  } catch {
+    appVersion.textContent = '버전 정보를 불러오지 못했어요.';
+  }
+}
+
+loadVersion();
