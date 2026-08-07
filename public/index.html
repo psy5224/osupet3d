@@ -18,7 +18,7 @@
     <div class="eyebrow">사진 속 그 아이, 동화 속 주인공으로</div>
     <h1>우리 아이를<br><em>한 장의 이야기</em>로</h1>
     <p>사진을 한 장 이상 올리면 생김새와 표정, 털 모양까지<br>우리 아이만의 특징을 담아 그려드려요.</p>
-    <div class="chips"><span>특징은 자세하게</span><span>흰 배경 고정</span><span>얼굴 정면 · 몸 오른쪽 45°</span><span>네 발 균등 지지</span><span>1:1 정사각형</span></div>
+    <div class="chips"><span>특징은 자세하게</span><span>옷·착용물 없음</span><span>흰 배경 고정</span><span>얼굴 정면 · 몸 오른쪽 45°</span><span>네 발 균등 지지</span><span>1:1 정사각형</span></div>
   </section>
   <section class="studio">
     <div class="panel input-panel">
@@ -31,7 +31,7 @@
       </label>
       <div id="previews" class="previews"></div>
       <div id="photoHint" class="photo-hint">사진을 1장 이상 넣어주세요.</div>
-      <div class="fixed-output">결과는 흰 배경 · 얼굴은 정면 · 몸은 화면 오른쪽 45° · 네 다리가 보이는 전신 · 네 발에 체중을 균등 배분 · 위로 든 꼬리 · 반듯한 고개 · 1:1 정사각형으로 만들어져요.</div>
+      <div class="fixed-output">결과는 옷과 착용물 없이 · 흰 배경 · 얼굴은 정면 · 몸은 화면 오른쪽 45° · 네 다리가 보이는 전신 · 네 발에 체중을 균등 배분 · 위로 든 꼬리 · 반듯한 고개 · 1:1 정사각형으로 만들어져요.</div>
       <button class="make" id="make" disabled>동화 속 모습 만나기 <i>→</i></button>
       <p class="privacy">사진은 그림 생성에만 사용하며 서버에 저장하지 않아요.</p>
     </div>
@@ -85,6 +85,42 @@
           <p class="viewer-help" id="viewerHelp" hidden>3D 모델을 불러오는 중...</p>
           <div id="modelLinks" class="model-links" hidden></div>
           <p class="signed-note" id="signedNote" hidden>다운로드 링크는 유효기간이 있으니 완성 후 바로 저장해주세요.</p>
+          <div class="retopo-action" id="retopoAction" hidden>
+            <button id="makeRetopo">리토폴로지로 8K~9K 버텍스 목표</button>
+            <p>Meshy 크레딧을 추가로 사용해 쿼드 기반의 가벼운 모델을 만듭니다.</p>
+          </div>
+          <section class="retopo-panel" id="retopoPanel" hidden>
+            <div class="three-d-head">
+              <div>
+                <span class="three-d-kicker">MESHY REMESH</span>
+                <h3 id="retopoTitle">리토폴로지를 준비하고 있어요</h3>
+              </div>
+              <strong id="retopoPercent">0%</strong>
+            </div>
+            <p id="retopoStatus">원본 3D 모델을 확인하는 중...</p>
+            <div class="three-d-progress" aria-hidden="true"><span id="retopoProgressBar"></span></div>
+            <p class="retopo-note">Meshy는 버텍스가 아닌 폴리곤 목표치를 받으므로 쿼드 8,500 폴리곤으로 처리합니다. 실제 버텍스 수는 모델 형상에 따라 8천~9천 범위를 벗어날 수 있습니다.</p>
+            <model-viewer
+              id="retopoViewer"
+              hidden
+              camera-controls
+              disable-pan
+              disable-tap
+              auto-rotate
+              auto-rotate-delay="0"
+              rotation-per-second="20deg"
+              interaction-prompt="auto"
+              interaction-prompt-style="wiggle"
+              shadow-intensity="1"
+              environment-image="neutral"
+              touch-action="none"
+              tabindex="0"
+              alt="리토폴로지가 완료된 반려동물 3D 모델"
+            ></model-viewer>
+            <p class="viewer-help" id="retopoViewerHelp" hidden>경량화 모델을 불러오는 중...</p>
+            <div id="retopoLinks" class="model-links" hidden></div>
+            <p class="signed-note" id="retopoSignedNote" hidden>경량화 모델은 pet3D_retopo 날짜·시간 형식으로 저장됩니다.</p>
+          </section>
         </section>
       </div>
     </aside>

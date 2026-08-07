@@ -12,6 +12,7 @@ const APP_INFO = {
 };
 const STYLE_REFERENCE = 'D:\\Libraries\\Downloads\\magnific_img1-._SObMbD5Ub8.png';
 const MESHY_API = 'https://api.meshy.ai/openapi/v1/image-to-3d';
+const MESHY_REMESH_API = 'https://api.meshy.ai/openapi/v1/remesh';
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -110,6 +111,9 @@ Match the visual style of the STYLE REFERENCE as closely as possible: a charming
 CUTE CHARACTER DIRECTION - MANDATORY
 Make the pet exceptionally adorable and emotionally warm while keeping it unmistakably the photographed dog or cat. Use softly rounded contours, a subtly oversized head, two large luminous glossy eyes, species-appropriate facial anatomy, plush layered fur, compact balanced proportions, and a calm, gentle, sweet expression. For a cat, retain natural feline eyes, whisker pads, whiskers, nose, paws, and tail; do not give it a dog's muzzle, grin, floppy dog ears, or dog-like body. For a dog, retain natural canine muzzle, ears, paws, and proportions. Keep all exaggeration tasteful and picture-book-like so species, breed traits, markings, and identity remain accurate. Avoid a stern, aggressive, uncanny, anatomically distorted, overly realistic, or generic mascot appearance.
 
+NO CLOTHING OR ACCESSORIES — MANDATORY
+Show the pet completely natural with uncovered fur and anatomy. Remove and never draw any clothing, costume, shirt, sweater, dress, jacket, cape, hat, hood, bow, ribbon, bandana, collar, harness, leash, tag, jewelry, diaper, socks, shoes, eyewear, or other wearable accessory, even when one appears in the input photos or style reference. Reconstruct the naturally occluded neck, chest, back, and leg fur from the surrounding coat colors, markings, length, and texture so the pet looks complete and recognizable. Wearable removal overrides preservation of photographed objects, but must not alter the pet's true body, fur, or markings.
+
 CANVAS AND BACKGROUND — MANDATORY
 Exact 1:1 square composition. Pure solid white (#FFFFFF) background only. One pet only, full body, centered, with generous white breathing room on every side so ears, whiskers, nose, paws, and tail are never cropped. No scenery, props, cast shadow, ground shadow, floor line, texture, border, transparency, or checkerboard.
 
@@ -120,7 +124,7 @@ STANCE - MANDATORY
 Show the pet calmly standing completely still in a neutral, natural species-appropriate 45-degree stance, regardless of any pose in the input photos or style reference. The entire body must be visible from ears to tail and paws. All four legs and all four paws must be clearly visible as four distinct, anatomically correct limbs. Stagger the near and far legs naturally in the three-quarter view, leaving visible white separation so no front leg, hind leg, or paw is hidden behind another limb or the torso. All four paws must be firmly and evenly planted on the same invisible horizontal ground plane. Distribute the pet's body weight equally across all four legs and all four paws: every leg must be straight but naturally relaxed, vertical, stable, and visibly load-bearing, with the full surface of every paw contacting the ground evenly. Keep the shoulders, spine, chest, abdomen, and hips level and centered. Do not shift weight toward the front, back, left, or right; do not lean, tilt the pelvis, drop one hip or shoulder, bend one supporting leg, stand on tiptoe, or make any paw look light, hovering, or ready to step. The tail must always be raised upward and fully visible behind or beside the body in a natural species-appropriate upward curve; preserve its true length, thickness, fur, and shape, including a naturally short tail, but never let it hang down, tuck between the legs, lie on the floor, disappear behind the body, or be cropped. No paw may be lifted. No walking, trotting, running, jumping, leaping, floating, sitting, lying down, crouching, play bow, rearing, dancing, dynamic action pose, head tilt, motion lines, or wind-swept motion.
 
 FINAL CONSTRAINTS
-No words, letters, logo, watermark, frame, extra animal, extra limb, checkerboard, or photorealism. Species and identity come only from Images 1-${images.length}; visual style comes only from the final STYLE REFERENCE image.`;
+No words, letters, logo, watermark, frame, clothing, collar, harness, accessory, extra animal, extra limb, checkerboard, or photorealism. Species and identity come only from Images 1-${images.length}; visual style comes only from the final STYLE REFERENCE image.`;
 
     form.append('prompt', prompt);
     form.append('model', 'gpt-image-2');
@@ -245,6 +249,83 @@ async function get3d(req, res, taskId) {
   }
 }
 
+async function createRemesh(req, res) {
+  if (!process.env.MESHY_API_KEY) {
+    return json(res, 503, { error: '서버에 MESHY_API_KEY가 설정되지 않았어요.' });
+  }
+
+  try {
+    const body = await readJson(req);
+    const taskId = body.taskId;
+    if (typeof taskId !== 'string' || !/^[0-9a-f-]{20,64}$/i.test(taskId)) {
+      return json(res, 400, { error: '리토폴로지할 올바른 3D 작업 ID가 필요해요.' });
+    }
+
+    const apiRes = await fetch(MESHY_REMESH_API, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + process.env.MESHY_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        input_task_id: taskId,
+        target_formats: ['glb', 'fbx', 'obj', 'usdz'],
+        topology: 'quad',
+        target_polycount: 8500
+      })
+    });
+    const result = await apiRes.json().catch(() => ({}));
+    if (!apiRes.ok) {
+      return json(res, apiRes.status, { error: meshyErrorMessage(apiRes.status, result) });
+    }
+    if (!result.result) throw new Error('Meshy 리토폴로지 작업 ID를 받지 못했어요.');
+    json(res, 202, { taskId: result.result });
+  } catch (error) {
+    console.error(error);
+    json(res, 500, { error: error.message || '리토폴로지 요청을 시작하지 못했어요.' });
+  }
+}
+
+async function getRemesh(req, res, taskId) {
+  if (!process.env.MESHY_API_KEY) {
+    return json(res, 503, { error: '서버에 MESHY_API_KEY가 설정되지 않았어요.' });
+  }
+  if (!/^[0-9a-f-]{20,64}$/i.test(taskId)) {
+    return json(res, 400, { error: '올바르지 않은 리토폴로지 작업 ID예요.' });
+  }
+
+  try {
+    const apiRes = await fetch(MESHY_REMESH_API + '/' + encodeURIComponent(taskId), {
+      headers: { Authorization: 'Bearer ' + process.env.MESHY_API_KEY }
+    });
+    const result = await apiRes.json().catch(() => ({}));
+    if (!apiRes.ok) {
+      return json(res, apiRes.status, { error: meshyErrorMessage(apiRes.status, result) });
+    }
+
+    const modelUrls = {};
+    for (const format of ['glb', 'fbx', 'obj', 'usdz', 'blend', 'stl']) {
+      if (result.model_urls && result.model_urls[format]) modelUrls[format] = result.model_urls[format];
+    }
+    json(res, 200, {
+      taskId: result.id || taskId,
+      status: result.status || 'PENDING',
+      progress: Number.isFinite(result.progress) ? result.progress : 0,
+      modelUrls,
+      viewerUrl: modelUrls.glb ? '/api/remesh/' + encodeURIComponent(taskId) + '/model.glb' : '',
+      thumbnailUrl: result.thumbnail_url || '',
+      error: result.task_error && result.task_error.message ? result.task_error.message : '',
+      consumedCredits: Number.isFinite(result.consumed_credits) ? result.consumed_credits : null,
+      topology: 'quad',
+      targetPolycount: 8500,
+      targetVertexRange: [8000, 9000]
+    });
+  } catch (error) {
+    console.error(error);
+    json(res, 500, { error: error.message || '리토폴로지 상태를 확인하지 못했어요.' });
+  }
+}
+
 function fileTimestamp(date = new Date()) {
   const values = {};
   for (const part of new Intl.DateTimeFormat('en-CA', {
@@ -262,7 +343,7 @@ function fileTimestamp(date = new Date()) {
   return values.year + values.month + values.day + '_' + values.hour + values.minute + values.second;
 }
 
-async function stream3dAsset(req, res, taskId, format, downloadStamp) {
+async function stream3dAsset(req, res, taskApi, taskId, format, downloadStamp, filenamePrefix) {
   if (!process.env.MESHY_API_KEY) {
     return json(res, 503, { error: '서버에 MESHY_API_KEY가 설정되지 않았어요.' });
   }
@@ -271,7 +352,7 @@ async function stream3dAsset(req, res, taskId, format, downloadStamp) {
   }
 
   try {
-    const taskRes = await fetch(MESHY_API + '/' + encodeURIComponent(taskId), {
+    const taskRes = await fetch(taskApi + '/' + encodeURIComponent(taskId), {
       headers: { Authorization: 'Bearer ' + process.env.MESHY_API_KEY }
     });
     const task = await taskRes.json().catch(() => ({}));
@@ -298,7 +379,9 @@ async function stream3dAsset(req, res, taskId, format, downloadStamp) {
 
     const isDownload = Boolean(downloadStamp);
     const safeStamp = /^\d{8}_\d{6}$/.test(downloadStamp || '') ? downloadStamp : fileTimestamp();
-    const filename = isDownload ? 'pet3D_' + safeStamp + '.' + format : 'pet3D_preview.' + format;
+    const filename = isDownload
+      ? filenamePrefix + '_' + safeStamp + '.' + format
+      : filenamePrefix + '_preview.' + format;
     const headers = {
       'Content-Type': modelRes.headers.get('content-type') || 'application/octet-stream',
       'Content-Disposition': (isDownload ? 'attachment' : 'inline') + '; filename="' + filename + '"',
@@ -329,6 +412,7 @@ async function stream3dAsset(req, res, taskId, format, downloadStamp) {
 const server = http.createServer((req, res) => {
   if (req.method === 'POST' && req.url === '/api/generate') return generate(req, res);
   if (req.method === 'POST' && req.url === '/api/3d') return create3d(req, res);
+  if (req.method === 'POST' && req.url === '/api/remesh') return createRemesh(req, res);
   if (req.method === 'GET' && req.url.split('?')[0] === '/api/version') return json(res, 200, APP_INFO);
 
   const requestUrl = new URL(req.url, 'http://localhost');
@@ -338,11 +422,22 @@ const server = http.createServer((req, res) => {
     const stamp = requestUrl.searchParams.get('download') === '1'
       ? requestUrl.searchParams.get('stamp') || fileTimestamp()
       : '';
-    return stream3dAsset(req, res, meshyModelMatch[1], meshyModelMatch[2].toLowerCase(), stamp);
+    return stream3dAsset(req, res, MESHY_API, meshyModelMatch[1], meshyModelMatch[2].toLowerCase(), stamp, 'pet3D');
+  }
+
+  const remeshModelMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/remesh\/([0-9a-f-]+)\/model\.(glb|fbx|obj|usdz|blend|stl)$/i);
+  if (remeshModelMatch) {
+    const stamp = requestUrl.searchParams.get('download') === '1'
+      ? requestUrl.searchParams.get('stamp') || fileTimestamp()
+      : '';
+    return stream3dAsset(req, res, MESHY_REMESH_API, remeshModelMatch[1], remeshModelMatch[2].toLowerCase(), stamp, 'pet3D_retopo');
   }
 
   const meshyTaskMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/3d\/([0-9a-f-]+)$/i);
   if (meshyTaskMatch) return get3d(req, res, meshyTaskMatch[1]);
+
+  const remeshTaskMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/remesh\/([0-9a-f-]+)$/i);
+  if (remeshTaskMatch) return getRemesh(req, res, remeshTaskMatch[1]);
 
   if (req.method !== 'GET') return json(res, 405, { error: '허용되지 않은 요청이에요.' });
 

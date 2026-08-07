@@ -21,12 +21,25 @@ const modelViewer = document.querySelector('#modelViewer');
 const viewerHelp = document.querySelector('#viewerHelp');
 const modelLinks = document.querySelector('#modelLinks');
 const signedNote = document.querySelector('#signedNote');
+const retopoAction = document.querySelector('#retopoAction');
+const makeRetopoButton = document.querySelector('#makeRetopo');
+const retopoPanel = document.querySelector('#retopoPanel');
+const retopoTitle = document.querySelector('#retopoTitle');
+const retopoPercent = document.querySelector('#retopoPercent');
+const retopoStatus = document.querySelector('#retopoStatus');
+const retopoProgressBar = document.querySelector('#retopoProgressBar');
+const retopoViewer = document.querySelector('#retopoViewer');
+const retopoViewerHelp = document.querySelector('#retopoViewerHelp');
+const retopoLinks = document.querySelector('#retopoLinks');
+const retopoSignedNote = document.querySelector('#retopoSignedNote');
 const appVersion = document.querySelector('#appVersion');
 
 let photos = [];
 let currentImage = '';
 let loadingTimer;
 let meshyRun = 0;
+let retopoRun = 0;
+let source3dTaskId = '';
 let toastTimer;
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -130,8 +143,31 @@ filesInput.onchange = event => {
 
 dropzone.addEventListener('drop', event => addFiles(event.dataTransfer.files));
 
+function resetRetopo() {
+  retopoRun += 1;
+  retopoAction.hidden = true;
+  retopoPanel.hidden = true;
+  retopoTitle.textContent = '리토폴로지를 준비하고 있어요';
+  retopoPercent.textContent = '0%';
+  retopoStatus.textContent = '원본 3D 모델을 확인하는 중...';
+  retopoProgressBar.style.width = '0%';
+  retopoViewer.hidden = true;
+  retopoViewer.classList.remove('ready');
+  retopoViewer.removeAttribute('src');
+  retopoViewer.removeAttribute('poster');
+  retopoViewerHelp.hidden = true;
+  retopoViewerHelp.textContent = '경량화 모델을 불러오는 중...';
+  retopoLinks.hidden = true;
+  retopoLinks.replaceChildren();
+  retopoSignedNote.hidden = true;
+  makeRetopoButton.disabled = false;
+  makeRetopoButton.textContent = '리토폴로지로 8K~9K 버텍스 목표';
+}
+
 function reset3d() {
   meshyRun += 1;
+  source3dTaskId = '';
+  resetRetopo();
   threeDPanel.hidden = true;
   threeDTitle.textContent = '3D 모델을 만들고 있어요';
   threeDPercent.textContent = '0%';
@@ -203,6 +239,28 @@ function update3dProgress(task) {
   threeDStatus.textContent = statusMessages[task.status] || '3D 모델을 처리하고 있어요...';
 }
 
+function renderModelLinks(container, task, routePrefix, filenamePrefix) {
+  const labels = { glb: 'GLB 저장', fbx: 'FBX 저장', obj: 'OBJ 저장', usdz: 'USDZ 저장', blend: 'BLEND 저장', stl: 'STL 저장' };
+  container.replaceChildren();
+  Object.entries(task.modelUrls || {}).forEach(([format, url]) => {
+    if (!labels[format] || typeof url !== 'string') return;
+    const link = document.createElement('a');
+    const localDownload = task.taskId
+      ? routePrefix + '/' + encodeURIComponent(task.taskId) + '/model.' + format + '?download=1'
+      : url;
+    link.href = localDownload;
+    link.download = filenamePrefix + '_' + fileTimestamp() + '.' + format;
+    link.addEventListener('click', () => {
+      const stamp = fileTimestamp();
+      link.download = filenamePrefix + '_' + stamp + '.' + format;
+      if (task.taskId) link.href = localDownload + '&stamp=' + stamp;
+    });
+    link.textContent = labels[format];
+    container.append(link);
+  });
+  container.hidden = container.childElementCount === 0;
+}
+
 function show3dResult(task) {
   const glbUrl = task.modelUrls && task.modelUrls.glb;
   if (!glbUrl) throw new Error('완성된 GLB 모델 주소를 받지 못했어요.');
@@ -220,26 +278,10 @@ function show3dResult(task) {
   viewerHelp.hidden = false;
   viewerHelp.textContent = '3D 모델을 불러오는 중...';
 
-  const labels = { glb: 'GLB 저장', fbx: 'FBX 저장', obj: 'OBJ 저장', usdz: 'USDZ 저장', stl: 'STL 저장' };
-  modelLinks.replaceChildren();
-  Object.entries(task.modelUrls || {}).forEach(([format, url]) => {
-    if (!labels[format] || typeof url !== 'string') return;
-    const link = document.createElement('a');
-    const localDownload = task.taskId
-      ? '/api/3d/' + encodeURIComponent(task.taskId) + '/model.' + format + '?download=1'
-      : url;
-    link.href = localDownload;
-    link.download = 'pet3D_' + fileTimestamp() + '.' + format;
-    link.addEventListener('click', () => {
-      const stamp = fileTimestamp();
-      link.download = 'pet3D_' + stamp + '.' + format;
-      if (task.taskId) link.href = localDownload + '&stamp=' + stamp;
-    });
-    link.textContent = labels[format];
-    modelLinks.append(link);
-  });
-  modelLinks.hidden = modelLinks.childElementCount === 0;
+  renderModelLinks(modelLinks, task, '/api/3d', 'pet3D');
   signedNote.hidden = false;
+  source3dTaskId = task.taskId || '';
+  retopoAction.hidden = !source3dTaskId;
   make3dButton.textContent = '3D 다시 만들기';
 }
 
@@ -267,6 +309,117 @@ modelViewer.addEventListener('error', () => {
 modelViewer.addEventListener('pointerdown', () => {
   modelViewer.focus({ preventScroll: true });
 });
+
+function updateRetopoProgress(task) {
+  const progress = Math.max(0, Math.min(100, Number(task.progress) || 0));
+  const statusMessages = {
+    PENDING: 'Meshy 리토폴로지 작업 순서를 기다리고 있어요...',
+    IN_PROGRESS: '형태와 텍스처를 유지하며 쿼드 메시를 정리하고 있어요...',
+    SUCCEEDED: '경량화 모델이 완성됐어요.'
+  };
+  retopoPercent.textContent = Math.round(progress) + '%';
+  retopoProgressBar.style.width = progress + '%';
+  retopoStatus.textContent = statusMessages[task.status] || '리토폴로지를 처리하고 있어요...';
+}
+
+function showRetopoResult(task) {
+  const glbUrl = task.modelUrls && task.modelUrls.glb;
+  if (!glbUrl) throw new Error('리토폴로지가 완료된 GLB 주소를 받지 못했어요.');
+  const viewerUrl = task.viewerUrl || glbUrl;
+
+  retopoTitle.textContent = '리토폴로지가 완료됐어요';
+  retopoPercent.textContent = '100%';
+  retopoProgressBar.style.width = '100%';
+  retopoStatus.textContent = '쿼드 8,500 폴리곤 목표로 만든 모델을 불러오는 중...';
+  retopoViewer.classList.remove('ready');
+  retopoViewer.setAttribute('camera-controls', '');
+  if (task.thumbnailUrl) retopoViewer.setAttribute('poster', task.thumbnailUrl);
+  retopoViewer.setAttribute('src', viewerUrl);
+  retopoViewer.hidden = false;
+  retopoViewerHelp.hidden = false;
+  retopoViewerHelp.textContent = '경량화 모델을 불러오는 중...';
+  renderModelLinks(retopoLinks, task, '/api/remesh', 'pet3D_retopo');
+  retopoSignedNote.hidden = false;
+  makeRetopoButton.textContent = '리토폴로지 다시 실행';
+}
+
+retopoViewer.addEventListener('progress', event => {
+  if (retopoViewer.hidden || retopoViewer.classList.contains('ready')) return;
+  const progress = Math.round(((event.detail && event.detail.totalProgress) || 0) * 100);
+  retopoViewerHelp.textContent = '경량화 모델을 불러오는 중... ' + progress + '%';
+});
+
+retopoViewer.addEventListener('load', () => {
+  if (retopoViewer.hidden) return;
+  retopoViewer.classList.add('ready');
+  retopoViewer.setAttribute('camera-controls', '');
+  retopoStatus.textContent = '경량화 모델이 준비됐어요. 클릭한 채 드래그해 확인해보세요.';
+  retopoViewerHelp.textContent = '🖱 클릭 + 드래그: 회전 · 휠: 확대/축소';
+});
+
+retopoViewer.addEventListener('error', () => {
+  if (retopoViewer.hidden) return;
+  retopoViewer.classList.remove('ready');
+  retopoStatus.textContent = '경량화 모델을 뷰어에서 불러오지 못했어요. GLB 저장 버튼을 이용해주세요.';
+  retopoViewerHelp.textContent = '뷰어 로드 실패 · 아래의 GLB 저장을 이용해주세요.';
+});
+
+retopoViewer.addEventListener('pointerdown', () => {
+  retopoViewer.focus({ preventScroll: true });
+});
+
+async function pollRetopo(taskId, run) {
+  for (let attempt = 0; attempt < 360; attempt += 1) {
+    if (run !== retopoRun) return;
+
+    const response = await fetch('/api/remesh/' + encodeURIComponent(taskId));
+    const task = await response.json();
+    if (!response.ok) throw new Error(task.error || '리토폴로지 상태를 확인하지 못했어요.');
+    if (run !== retopoRun) return;
+
+    updateRetopoProgress(task);
+    if (task.status === 'SUCCEEDED') {
+      showRetopoResult(task);
+      return;
+    }
+    if (['FAILED', 'CANCELED', 'EXPIRED'].includes(task.status)) {
+      throw new Error(task.error || 'Meshy 리토폴로지 작업이 완료되지 못했어요.');
+    }
+    await delay(5000);
+  }
+  throw new Error('리토폴로지 시간이 너무 오래 걸리고 있어요. 잠시 후 다시 시도해주세요.');
+}
+
+async function createRetopo() {
+  if (!source3dTaskId) return say('먼저 원본 3D 모델을 만들어주세요.');
+
+  resetRetopo();
+  const run = retopoRun;
+  retopoAction.hidden = false;
+  retopoPanel.hidden = false;
+  makeRetopoButton.disabled = true;
+  makeRetopoButton.textContent = '리토폴로지 진행 중...';
+  retopoStatus.textContent = '원본 모델을 Meshy Remesh에 전달하는 중...';
+  if (innerWidth < 850) retopoPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  try {
+    const response = await fetch('/api/remesh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskId: source3dTaskId })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || '리토폴로지를 시작하지 못했어요.');
+    await pollRetopo(data.taskId, run);
+  } catch (error) {
+    if (run !== retopoRun) return;
+    retopoTitle.textContent = '리토폴로지를 완료하지 못했어요';
+    retopoStatus.textContent = error.message || '잠시 후 다시 시도해주세요.';
+    say(error.message || '리토폴로지를 완료하지 못했어요.');
+  } finally {
+    if (run === retopoRun) makeRetopoButton.disabled = false;
+  }
+}
 
 async function poll3d(taskId, run) {
   for (let attempt = 0; attempt < 360; attempt += 1) {
@@ -323,6 +476,7 @@ async function create3d() {
 make.onclick = generate;
 document.querySelector('#retry').onclick = generate;
 make3dButton.onclick = create3d;
+makeRetopoButton.onclick = createRetopo;
 downloadImage.addEventListener('click', () => {
   downloadImage.download = 'pet2d_' + fileTimestamp() + '.png';
 });
