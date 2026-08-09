@@ -109,10 +109,13 @@ STYLE — MANDATORY
 Match the visual style of the STYLE REFERENCE as closely as possible: a charming hand-painted children's storybook character illustration; bold, softly irregular dark ink outlines; rounded and appealing shapes; layered fur tufts drawn with expressive scalloped brush shapes; translucent watercolor washes mixed with soft opaque gouache-like shading; visible colored-pencil and paper texture; gentle tonal modeling; warm golden-brown edge highlights; rich but cozy colors; two large glossy expressive eyes; polished professional picture-book finish. It must feel hand-drawn, warm, whimsical, dimensional, and distinctly fairy-tale-like. Do not make it a flat vector icon, generic digital cartoon, anime, 3D render, photograph, or photorealistic painting.
 
 CUTE CHARACTER DIRECTION - MANDATORY
-Make the pet exceptionally adorable and emotionally warm while keeping it unmistakably the photographed dog or cat. Use softly rounded contours, a subtly oversized head, two large luminous glossy eyes, species-appropriate facial anatomy, plush layered fur, compact balanced proportions, and a calm, gentle, sweet expression. For a cat, retain natural feline eyes, whisker pads, whiskers, nose, paws, and tail; do not give it a dog's muzzle, grin, floppy dog ears, or dog-like body. For a dog, retain natural canine muzzle, ears, paws, and proportions. Keep all exaggeration tasteful and picture-book-like so species, breed traits, markings, and identity remain accurate. Avoid a stern, aggressive, uncanny, anatomically distorted, overly realistic, or generic mascot appearance.
+Make the pet exceptionally adorable and emotionally warm while keeping it unmistakably the photographed dog or cat. Use softly rounded contours, two large luminous glossy eyes, species-appropriate facial anatomy, plush layered fur, the photographed pet's natural head-to-body ratio and body build, and a calm, gentle, sweet expression. For a cat, retain natural feline eyes, whisker pads, whiskers, nose, paws, and tail; do not give it a dog's muzzle, grin, floppy dog ears, or dog-like body. For a dog, retain natural canine muzzle, ears, paws, and proportions. Create the cute storybook feeling through the eyes, expression, linework, color, and fur rendering rather than by changing skeletal proportions or body mass. Keep all exaggeration tasteful and picture-book-like so species, breed traits, markings, and identity remain accurate. Avoid a stern, aggressive, uncanny, anatomically distorted, overly realistic, or generic mascot appearance.
 
 NO CLOTHING OR ACCESSORIES — MANDATORY
 Show the pet completely natural with uncovered fur and anatomy. Remove and never draw any clothing, costume, shirt, sweater, dress, jacket, cape, hat, hood, bow, ribbon, bandana, collar, harness, leash, tag, jewelry, diaper, socks, shoes, eyewear, or other wearable accessory, even when one appears in the input photos or style reference. Reconstruct the naturally occluded neck, chest, back, and leg fur from the surrounding coat colors, markings, length, and texture so the pet looks complete and recognizable. Wearable removal overrides preservation of photographed objects, but must not alter the pet's true body, fur, or markings.
+
+3D-READY BODY SHAPE — MANDATORY
+Preserve the photographed pet's real visible body build exactly: head-to-body ratio, torso length, chest width and depth, waist, shoulder and hip width, neck length, leg length and thickness, paw size, and tail base. Do not make the torso rounder, wider, shorter, longer, heavier, slimmer, or more compact than the target pet. Keep a clean, unmistakable full-body silhouette suitable for single-image 3D reconstruction. Clearly separate the ears, head, neck, chest, belly, each of the four legs and paws, tail, and torso with visible white gaps wherever anatomically possible. Do not merge limbs into fur, hide joints, flatten or inflate the torso, or let fluffy brush shapes obscure where each body part begins and ends.
 
 CANVAS AND BACKGROUND — MANDATORY
 Exact 1:1 square composition. Pure solid white (#FFFFFF) background only. One pet only, full body, centered, with generous white breathing room on every side so ears, whiskers, nose, paws, and tail are never cropped. No scenery, props, cast shadow, ground shadow, floor line, texture, border, transparency, or checkerboard.
@@ -189,7 +192,8 @@ async function create3d(req, res) {
       body: JSON.stringify({
         image_url: image,
         model_type: 'standard',
-        ai_model: 'latest',
+        ai_model: 'meshy-6',
+        should_remesh: false,
         should_texture: true,
         enable_pbr: true,
         image_enhancement: false,
