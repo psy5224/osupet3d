@@ -40,6 +40,7 @@ let loadingTimer;
 let meshyRun = 0;
 let retopoRun = 0;
 let source3dTaskId = '';
+let source3dModelUrl = '';
 let toastTimer;
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -167,6 +168,7 @@ function resetRetopo() {
 function reset3d() {
   meshyRun += 1;
   source3dTaskId = '';
+  source3dModelUrl = '';
   resetRetopo();
   threeDPanel.hidden = true;
   threeDTitle.textContent = '3D 모델을 만들고 있어요';
@@ -281,7 +283,8 @@ function show3dResult(task) {
   renderModelLinks(modelLinks, task, '/api/3d', 'pet3D');
   signedNote.hidden = false;
   source3dTaskId = task.taskId || '';
-  retopoAction.hidden = !source3dTaskId;
+  source3dModelUrl = glbUrl;
+  retopoAction.hidden = !(source3dTaskId || source3dModelUrl);
   make3dButton.textContent = '3D 다시 만들기';
 }
 
@@ -391,7 +394,7 @@ async function pollRetopo(taskId, run) {
 }
 
 async function createRetopo() {
-  if (!source3dTaskId) return say('먼저 원본 3D 모델을 만들어주세요.');
+  if (!source3dTaskId && !source3dModelUrl) return say('먼저 원본 3D 모델을 만들어주세요.');
 
   resetRetopo();
   const run = retopoRun;
@@ -406,7 +409,7 @@ async function createRetopo() {
     const response = await fetch('/api/remesh', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ taskId: source3dTaskId })
+      body: JSON.stringify({ taskId: source3dTaskId, modelUrl: source3dModelUrl })
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || '리토폴로지를 시작하지 못했어요.');

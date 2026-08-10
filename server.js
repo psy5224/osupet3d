@@ -109,13 +109,13 @@ STYLE — MANDATORY
 Match the visual style of the STYLE REFERENCE as closely as possible: a charming hand-painted children's storybook character illustration; bold, softly irregular dark ink outlines; rounded and appealing shapes; layered fur tufts drawn with expressive scalloped brush shapes; translucent watercolor washes mixed with soft opaque gouache-like shading; visible colored-pencil and paper texture; gentle tonal modeling; warm golden-brown edge highlights; rich but cozy colors; two large glossy expressive eyes; polished professional picture-book finish. It must feel hand-drawn, warm, whimsical, dimensional, and distinctly fairy-tale-like. Do not make it a flat vector icon, generic digital cartoon, anime, 3D render, photograph, or photorealistic painting.
 
 CUTE CHARACTER DIRECTION - MANDATORY
-Make the pet exceptionally adorable and emotionally warm while keeping it unmistakably the photographed dog or cat. Use softly rounded contours, two large luminous glossy eyes, species-appropriate facial anatomy, plush layered fur, the photographed pet's natural head-to-body ratio and body build, and a calm, gentle, sweet expression. For a cat, retain natural feline eyes, whisker pads, whiskers, nose, paws, and tail; do not give it a dog's muzzle, grin, floppy dog ears, or dog-like body. For a dog, retain natural canine muzzle, ears, paws, and proportions. Create the cute storybook feeling through the eyes, expression, linework, color, and fur rendering rather than by changing skeletal proportions or body mass. Keep all exaggeration tasteful and picture-book-like so species, breed traits, markings, and identity remain accurate. Avoid a stern, aggressive, uncanny, anatomically distorted, overly realistic, or generic mascot appearance.
+Make the pet exceptionally adorable, small, and emotionally warm while keeping it unmistakably the photographed dog or cat. Give it a gently oversized head, subtly shortened legs, a slightly lower overall height, and a compact softly rounded torso. Keep the shortening controlled and consistent rather than extreme: all four legs must still be anatomically complete, clearly separated, equally load-bearing, and appropriate to the target pet. Use two large luminous glossy eyes, species-appropriate facial anatomy, plush layered fur, small neat paws, and a calm, gentle, sweet expression. For a cat, retain natural feline eyes, whisker pads, whiskers, nose, paws, and tail; do not give it a dog's muzzle, grin, floppy dog ears, or dog-like body. For a dog, retain natural canine muzzle, ears, paws, and breed traits. Preserve every identity-defining color, marking, ear, muzzle, tail, and coat feature. Avoid an oversized body, long legs, a stretched torso, a stern or aggressive expression, uncanny anatomy, photorealism, or a generic mascot appearance.
 
 NO CLOTHING OR ACCESSORIES — MANDATORY
 Show the pet completely natural with uncovered fur and anatomy. Remove and never draw any clothing, costume, shirt, sweater, dress, jacket, cape, hat, hood, bow, ribbon, bandana, collar, harness, leash, tag, jewelry, diaper, socks, shoes, eyewear, or other wearable accessory, even when one appears in the input photos or style reference. Reconstruct the naturally occluded neck, chest, back, and leg fur from the surrounding coat colors, markings, length, and texture so the pet looks complete and recognizable. Wearable removal overrides preservation of photographed objects, but must not alter the pet's true body, fur, or markings.
 
 3D-READY BODY SHAPE — MANDATORY
-Preserve the photographed pet's real visible body build exactly: head-to-body ratio, torso length, chest width and depth, waist, shoulder and hip width, neck length, leg length and thickness, paw size, and tail base. Do not make the torso rounder, wider, shorter, longer, heavier, slimmer, or more compact than the target pet. Keep a clean, unmistakable full-body silhouette suitable for single-image 3D reconstruction. Clearly separate the ears, head, neck, chest, belly, each of the four legs and paws, tail, and torso with visible white gaps wherever anatomically possible. Do not merge limbs into fur, hide joints, flatten or inflate the torso, or let fluffy brush shapes obscure where each body part begins and ends.
+Apply only the controlled cute proportions described above, then keep those proportions internally consistent and unambiguous for 3D reconstruction: the same shortened leg length on all four legs, a stable compact torso, a clear chest and waist, and a readable neck-to-body connection. Do not alter the body shape beyond that single deliberate stylization. Keep a clean, unmistakable full-body silhouette. Clearly separate the ears, head, neck, chest, belly, each of the four legs and paws, tail, and torso with visible white gaps wherever anatomically possible. Do not merge limbs into fur, hide joints, flatten or inflate the torso, or let fluffy brush shapes obscure where each body part begins and ends.
 
 CANVAS AND BACKGROUND — MANDATORY
 Exact 1:1 square composition. Pure solid white (#FFFFFF) background only. One pet only, full body, centered, with generous white breathing room on every side so ears, whiskers, nose, paws, and tail are never cropped. No scenery, props, cast shadow, ground shadow, floor line, texture, border, transparency, or checkerboard.
@@ -158,13 +158,40 @@ No words, letters, logo, watermark, frame, clothing, collar, harness, accessory,
 function meshyErrorMessage(status, result) {
   const detail = result && (
     result.message ||
+    result.detail ||
+    (typeof result.error === 'string' && result.error) ||
     (result.error && result.error.message) ||
+    (typeof result.task_error === 'string' && result.task_error) ||
     (result.task_error && result.task_error.message)
   );
   if (status === 401) return 'Meshy API 키가 올바르지 않아요.';
   if (status === 402) return 'Meshy 크레딧이 부족해요. Meshy 계정의 잔액을 확인해주세요.';
   if (status === 429) return 'Meshy 요청 한도를 초과했어요. 잠시 후 다시 시도해주세요.';
   return detail || 'Meshy에서 3D 모델을 만들지 못했어요.';
+}
+
+function isValidMeshyTaskId(value) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 256 && !/[\u0000-\u001F\u007F]/.test(value);
+}
+
+function decodeTaskId(value) {
+  try {
+    const decoded = decodeURIComponent(value);
+    return isValidMeshyTaskId(decoded) ? decoded : '';
+  } catch {
+    return '';
+  }
+}
+
+function validMeshyModelUrl(value) {
+  if (typeof value !== 'string') return '';
+  try {
+    const parsed = new URL(value);
+    const isMeshyHost = parsed.hostname === 'meshy.ai' || parsed.hostname.endsWith('.meshy.ai');
+    return parsed.protocol === 'https:' && isMeshyHost ? parsed.href : '';
+  } catch {
+    return '';
+  }
 }
 
 async function create3d(req, res) {
@@ -217,7 +244,7 @@ async function get3d(req, res, taskId) {
   if (!process.env.MESHY_API_KEY) {
     return json(res, 503, { error: '서버에 MESHY_API_KEY가 설정되지 않았어요.' });
   }
-  if (!/^[0-9a-f-]{20,64}$/i.test(taskId)) {
+  if (!isValidMeshyTaskId(taskId)) {
     return json(res, 400, { error: '올바르지 않은 Meshy 작업 ID예요.' });
   }
 
@@ -261,28 +288,44 @@ async function createRemesh(req, res) {
   try {
     const body = await readJson(req);
     const taskId = body.taskId;
-    if (typeof taskId !== 'string' || !/^[0-9a-f-]{20,64}$/i.test(taskId)) {
-      return json(res, 400, { error: '리토폴로지할 올바른 3D 작업 ID가 필요해요.' });
+    const modelUrl = validMeshyModelUrl(body.modelUrl);
+    if (!isValidMeshyTaskId(taskId) && !modelUrl) {
+      return json(res, 400, { error: '리토폴로지할 3D 작업 ID 또는 GLB 주소가 필요해요.' });
     }
 
-    const apiRes = await fetch(MESHY_REMESH_API, {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer ' + process.env.MESHY_API_KEY,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        input_task_id: taskId,
-        target_formats: ['glb', 'fbx', 'obj', 'usdz'],
-        topology: 'quad',
-        target_polycount: 8500
-      })
-    });
-    const result = await apiRes.json().catch(() => ({}));
+    const startRemesh = async input => {
+      const apiRes = await fetch(MESHY_REMESH_API, {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + process.env.MESHY_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          ...input,
+          target_formats: ['glb', 'fbx', 'obj', 'usdz'],
+          topology: 'quad',
+          target_polycount: 8500
+        })
+      });
+      return { apiRes, result: await apiRes.json().catch(() => ({})) };
+    };
+
+    let attempt = await startRemesh(isValidMeshyTaskId(taskId)
+      ? { input_task_id: taskId }
+      : { model_url: modelUrl });
+
+    // If Meshy rejects a source task ID, retry with its signed GLB URL.
+    if (!attempt.apiRes.ok && attempt.apiRes.status === 400 && modelUrl && isValidMeshyTaskId(taskId)) {
+      attempt = await startRemesh({ model_url: modelUrl });
+    }
+
+    const { apiRes, result } = attempt;
     if (!apiRes.ok) {
       return json(res, apiRes.status, { error: meshyErrorMessage(apiRes.status, result) });
     }
-    if (!result.result) throw new Error('Meshy 리토폴로지 작업 ID를 받지 못했어요.');
+    if (!isValidMeshyTaskId(result.result)) {
+      throw new Error('Meshy 리토폴로지 작업 ID를 받지 못했어요.');
+    }
     json(res, 202, { taskId: result.result });
   } catch (error) {
     console.error(error);
@@ -294,7 +337,7 @@ async function getRemesh(req, res, taskId) {
   if (!process.env.MESHY_API_KEY) {
     return json(res, 503, { error: '서버에 MESHY_API_KEY가 설정되지 않았어요.' });
   }
-  if (!/^[0-9a-f-]{20,64}$/i.test(taskId)) {
+  if (!isValidMeshyTaskId(taskId)) {
     return json(res, 400, { error: '올바르지 않은 리토폴로지 작업 ID예요.' });
   }
 
@@ -314,7 +357,7 @@ async function getRemesh(req, res, taskId) {
     json(res, 200, {
       taskId: result.id || taskId,
       status: result.status || 'PENDING',
-      progress: Number.isFinite(result.progress) ? result.progress : 0,
+      progress: result.status === 'SUCCEEDED' ? 100 : (Number.isFinite(result.progress) ? result.progress : 0),
       modelUrls,
       viewerUrl: modelUrls.glb ? '/api/remesh/' + encodeURIComponent(taskId) + '/model.glb' : '',
       thumbnailUrl: result.thumbnail_url || '',
@@ -351,7 +394,7 @@ async function stream3dAsset(req, res, taskApi, taskId, format, downloadStamp, f
   if (!process.env.MESHY_API_KEY) {
     return json(res, 503, { error: '서버에 MESHY_API_KEY가 설정되지 않았어요.' });
   }
-  if (!/^[0-9a-f-]{20,64}$/i.test(taskId)) {
+  if (!isValidMeshyTaskId(taskId)) {
     return json(res, 400, { error: '올바르지 않은 Meshy 작업 ID예요.' });
   }
 
@@ -421,27 +464,27 @@ const server = http.createServer((req, res) => {
 
   const requestUrl = new URL(req.url, 'http://localhost');
   const cleanUrl = requestUrl.pathname;
-  const meshyModelMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/3d\/([0-9a-f-]+)\/model\.(glb|fbx|obj|usdz|stl)$/i);
+  const meshyModelMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/3d\/([^/]+)\/model\.(glb|fbx|obj|usdz|stl)$/);
   if (meshyModelMatch) {
     const stamp = requestUrl.searchParams.get('download') === '1'
       ? requestUrl.searchParams.get('stamp') || fileTimestamp()
       : '';
-    return stream3dAsset(req, res, MESHY_API, meshyModelMatch[1], meshyModelMatch[2].toLowerCase(), stamp, 'pet3D');
+    return stream3dAsset(req, res, MESHY_API, decodeTaskId(meshyModelMatch[1]), meshyModelMatch[2].toLowerCase(), stamp, 'pet3D');
   }
 
-  const remeshModelMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/remesh\/([0-9a-f-]+)\/model\.(glb|fbx|obj|usdz|blend|stl)$/i);
+  const remeshModelMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/remesh\/([^/]+)\/model\.(glb|fbx|obj|usdz|blend|stl)$/);
   if (remeshModelMatch) {
     const stamp = requestUrl.searchParams.get('download') === '1'
       ? requestUrl.searchParams.get('stamp') || fileTimestamp()
       : '';
-    return stream3dAsset(req, res, MESHY_REMESH_API, remeshModelMatch[1], remeshModelMatch[2].toLowerCase(), stamp, 'pet3D_retopo');
+    return stream3dAsset(req, res, MESHY_REMESH_API, decodeTaskId(remeshModelMatch[1]), remeshModelMatch[2].toLowerCase(), stamp, 'pet3D_retopo');
   }
 
-  const meshyTaskMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/3d\/([0-9a-f-]+)$/i);
-  if (meshyTaskMatch) return get3d(req, res, meshyTaskMatch[1]);
+  const meshyTaskMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/3d\/([^/]+)$/);
+  if (meshyTaskMatch) return get3d(req, res, decodeTaskId(meshyTaskMatch[1]));
 
-  const remeshTaskMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/remesh\/([0-9a-f-]+)$/i);
-  if (remeshTaskMatch) return getRemesh(req, res, remeshTaskMatch[1]);
+  const remeshTaskMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/remesh\/([^/]+)$/);
+  if (remeshTaskMatch) return getRemesh(req, res, decodeTaskId(remeshTaskMatch[1]));
 
   if (req.method !== 'GET') return json(res, 405, { error: '허용되지 않은 요청이에요.' });
 
