@@ -33,6 +33,7 @@ const retopoViewerHelp = document.querySelector('#retopoViewerHelp');
 const retopoLinks = document.querySelector('#retopoLinks');
 const retopoSignedNote = document.querySelector('#retopoSignedNote');
 const appVersion = document.querySelector('#appVersion');
+const ANYTHING_WORLD_UPLOAD_URL = 'https://app.anything.world/animation-rigging';
 
 let photos = [];
 let currentImage = '';
@@ -42,6 +43,7 @@ let retopoRun = 0;
 let source3dTaskId = '';
 let source3dModelUrl = '';
 let toastTimer;
+let anythingWorldWindow = null;
 const autoDownloadedTasks = new Set();
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -69,6 +71,24 @@ const say = message => {
   toast.classList.add('show');
   toastTimer = setTimeout(() => toast.classList.remove('show'), 3200);
 };
+
+function prepareAnythingWorldUploadTab() {
+  if (anythingWorldWindow && !anythingWorldWindow.closed) return true;
+
+  const uploadWindow = window.open('about:blank', 'anythingWorldUpload');
+  if (!uploadWindow) return false;
+  uploadWindow.opener = null;
+  uploadWindow.location.replace(ANYTHING_WORLD_UPLOAD_URL);
+  anythingWorldWindow = uploadWindow;
+  window.focus();
+  return true;
+}
+
+function focusAnythingWorldUploadTab() {
+  if (!anythingWorldWindow || anythingWorldWindow.closed) return false;
+  anythingWorldWindow.focus();
+  return true;
+}
 
 function update() {
   previews.innerHTML = '';
@@ -268,6 +288,17 @@ function renderGlbDownload(container, task, routePrefix, filenamePrefix) {
   return link;
 }
 
+function renderAnythingWorldLink(container) {
+  const link = document.createElement('a');
+  link.href = ANYTHING_WORLD_UPLOAD_URL;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.textContent = 'Anything World에 업로드';
+  container.append(link);
+  container.hidden = false;
+  return link;
+}
+
 function autoDownloadGlb(link, task) {
   if (!link) return;
   const key = task.taskId || (task.modelUrls && task.modelUrls.glb);
@@ -276,7 +307,12 @@ function autoDownloadGlb(link, task) {
 
   setTimeout(() => {
     link.click();
-    say('최종 GLB 다운로드를 시작했어요.');
+    const filename = link.download;
+    const uploadTabFocused = focusAnythingWorldUploadTab();
+    retopoSignedNote.textContent = uploadTabFocused
+      ? filename + ' 다운로드를 시작했어요. 열린 Anything World 탭에서 이 파일을 선택해주세요.'
+      : filename + ' 다운로드를 시작했어요. 팝업이 차단되어 아래 Anything World 업로드 버튼을 눌러주세요.';
+    say('최종 GLB 다운로드를 시작했어요. Anything World에서 파일을 선택해주세요.');
   }, 200);
 }
 
@@ -360,6 +396,7 @@ function showRetopoResult(task) {
   retopoViewerHelp.hidden = false;
   retopoViewerHelp.textContent = '경량화 모델을 불러오는 중...';
   const downloadLink = renderGlbDownload(retopoLinks, task, '/api/remesh', 'pet3D');
+  renderAnythingWorldLink(retopoLinks);
   retopoSignedNote.hidden = false;
   retopoAction.hidden = true;
   makeRetopoButton.textContent = '리토폴로지 다시 실행';
@@ -500,10 +537,22 @@ async function create3d() {
   }
 }
 
-make.onclick = generate;
-document.querySelector('#retry').onclick = generate;
-make3dButton.onclick = () => create3d();
-makeRetopoButton.onclick = () => createRetopo();
+make.onclick = () => {
+  if (!prepareAnythingWorldUploadTab()) say('팝업이 차단됐어요. 완성 후 업로드 버튼을 눌러주세요.');
+  generate();
+};
+document.querySelector('#retry').onclick = () => {
+  if (!prepareAnythingWorldUploadTab()) say('팝업이 차단됐어요. 완성 후 업로드 버튼을 눌러주세요.');
+  generate();
+};
+make3dButton.onclick = () => {
+  if (!prepareAnythingWorldUploadTab()) say('팝업이 차단됐어요. 완성 후 업로드 버튼을 눌러주세요.');
+  create3d();
+};
+makeRetopoButton.onclick = () => {
+  if (!prepareAnythingWorldUploadTab()) say('팝업이 차단됐어요. 완성 후 업로드 버튼을 눌러주세요.');
+  createRetopo();
+};
 downloadImage.addEventListener('click', () => {
   downloadImage.download = 'pet2d_' + fileTimestamp() + '.png';
 });

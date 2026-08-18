@@ -1,1 +1,1 @@
-{"name":"monggeul","version":"1.3.0","appUpdatedAt":"2026-08-18T11:58:05+09:00","private":true,"scripts":{"dev":"node server.js","start":"node server.js"},"engines":{"node":">=20"}}
+{"name":"monggeul","version":"1.3.1","appUpdatedAt":"2026-08-18T16:35:53+09:00","private":true,"scripts":{"dev":"node server.js","start":"node server.js"},"engines":{"node":">=20"}}
