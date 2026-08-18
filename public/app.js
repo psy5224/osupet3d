@@ -43,7 +43,6 @@ let retopoRun = 0;
 let source3dTaskId = '';
 let source3dModelUrl = '';
 let toastTimer;
-let anythingWorldWindow = null;
 const autoDownloadedTasks = new Set();
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -71,24 +70,6 @@ const say = message => {
   toast.classList.add('show');
   toastTimer = setTimeout(() => toast.classList.remove('show'), 3200);
 };
-
-function prepareAnythingWorldUploadTab() {
-  if (anythingWorldWindow && !anythingWorldWindow.closed) return true;
-
-  const uploadWindow = window.open('about:blank', 'anythingWorldUpload');
-  if (!uploadWindow) return false;
-  uploadWindow.opener = null;
-  uploadWindow.location.replace(ANYTHING_WORLD_UPLOAD_URL);
-  anythingWorldWindow = uploadWindow;
-  window.focus();
-  return true;
-}
-
-function focusAnythingWorldUploadTab() {
-  if (!anythingWorldWindow || anythingWorldWindow.closed) return false;
-  anythingWorldWindow.focus();
-  return true;
-}
 
 function update() {
   previews.innerHTML = '';
@@ -308,11 +289,8 @@ function autoDownloadGlb(link, task) {
   setTimeout(() => {
     link.click();
     const filename = link.download;
-    const uploadTabFocused = focusAnythingWorldUploadTab();
-    retopoSignedNote.textContent = uploadTabFocused
-      ? filename + ' 다운로드를 시작했어요. 열린 Anything World 탭에서 이 파일을 선택해주세요.'
-      : filename + ' 다운로드를 시작했어요. 팝업이 차단되어 아래 Anything World 업로드 버튼을 눌러주세요.';
-    say('최종 GLB 다운로드를 시작했어요. Anything World에서 파일을 선택해주세요.');
+    retopoSignedNote.textContent = filename + ' 다운로드를 시작했어요. 아래 Anything World 업로드 버튼을 눌러 이 파일을 선택해주세요.';
+    say('최종 GLB 다운로드를 시작했어요.');
   }, 200);
 }
 
@@ -537,22 +515,10 @@ async function create3d() {
   }
 }
 
-make.onclick = () => {
-  if (!prepareAnythingWorldUploadTab()) say('팝업이 차단됐어요. 완성 후 업로드 버튼을 눌러주세요.');
-  generate();
-};
-document.querySelector('#retry').onclick = () => {
-  if (!prepareAnythingWorldUploadTab()) say('팝업이 차단됐어요. 완성 후 업로드 버튼을 눌러주세요.');
-  generate();
-};
-make3dButton.onclick = () => {
-  if (!prepareAnythingWorldUploadTab()) say('팝업이 차단됐어요. 완성 후 업로드 버튼을 눌러주세요.');
-  create3d();
-};
-makeRetopoButton.onclick = () => {
-  if (!prepareAnythingWorldUploadTab()) say('팝업이 차단됐어요. 완성 후 업로드 버튼을 눌러주세요.');
-  createRetopo();
-};
+make.onclick = generate;
+document.querySelector('#retry').onclick = generate;
+make3dButton.onclick = () => create3d();
+makeRetopoButton.onclick = () => createRetopo();
 downloadImage.addEventListener('click', () => {
   downloadImage.download = 'pet2d_' + fileTimestamp() + '.png';
 });
