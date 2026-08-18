@@ -225,7 +225,7 @@ async function create3d(req, res) {
         enable_pbr: true,
         image_enhancement: false,
         remove_lighting: true,
-        target_formats: ['glb', 'fbx', 'obj', 'usdz']
+        target_formats: ['glb']
       })
     });
     const result = await apiRes.json().catch(() => ({}));
@@ -258,7 +258,7 @@ async function get3d(req, res, taskId) {
     }
 
     const modelUrls = {};
-    for (const format of ['glb', 'fbx', 'obj', 'usdz', 'stl']) {
+    for (const format of ['glb']) {
       if (result.model_urls && result.model_urls[format]) {
         modelUrls[format] = result.model_urls[format];
       }
@@ -302,7 +302,7 @@ async function createRemesh(req, res) {
         },
         body: JSON.stringify({
           ...input,
-          target_formats: ['glb', 'fbx', 'obj', 'usdz'],
+          target_formats: ['glb'],
           topology: 'quad',
           target_polycount: 8500
         })
@@ -351,7 +351,7 @@ async function getRemesh(req, res, taskId) {
     }
 
     const modelUrls = {};
-    for (const format of ['glb', 'fbx', 'obj', 'usdz', 'blend', 'stl']) {
+    for (const format of ['glb']) {
       if (result.model_urls && result.model_urls[format]) modelUrls[format] = result.model_urls[format];
     }
     json(res, 200, {
@@ -464,7 +464,7 @@ const server = http.createServer((req, res) => {
 
   const requestUrl = new URL(req.url, 'http://localhost');
   const cleanUrl = requestUrl.pathname;
-  const meshyModelMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/3d\/([^/]+)\/model\.(glb|fbx|obj|usdz|stl)$/);
+  const meshyModelMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/3d\/([^/]+)\/model\.(glb)$/);
   if (meshyModelMatch) {
     const stamp = requestUrl.searchParams.get('download') === '1'
       ? requestUrl.searchParams.get('stamp') || fileTimestamp()
@@ -472,12 +472,12 @@ const server = http.createServer((req, res) => {
     return stream3dAsset(req, res, MESHY_API, decodeTaskId(meshyModelMatch[1]), meshyModelMatch[2].toLowerCase(), stamp, 'pet3D');
   }
 
-  const remeshModelMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/remesh\/([^/]+)\/model\.(glb|fbx|obj|usdz|blend|stl)$/);
+  const remeshModelMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/remesh\/([^/]+)\/model\.(glb)$/);
   if (remeshModelMatch) {
     const stamp = requestUrl.searchParams.get('download') === '1'
       ? requestUrl.searchParams.get('stamp') || fileTimestamp()
       : '';
-    return stream3dAsset(req, res, MESHY_REMESH_API, decodeTaskId(remeshModelMatch[1]), remeshModelMatch[2].toLowerCase(), stamp, 'pet3D_retopo');
+    return stream3dAsset(req, res, MESHY_REMESH_API, decodeTaskId(remeshModelMatch[1]), remeshModelMatch[2].toLowerCase(), stamp, 'pet3D');
   }
 
   const meshyTaskMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/3d\/([^/]+)$/);

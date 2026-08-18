@@ -42,6 +42,7 @@ let retopoRun = 0;
 let source3dTaskId = '';
 let source3dModelUrl = '';
 let toastTimer;
+const autoDownloadedTasks = new Set();
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -162,13 +163,14 @@ function resetRetopo() {
   retopoLinks.replaceChildren();
   retopoSignedNote.hidden = true;
   makeRetopoButton.disabled = false;
-  makeRetopoButton.textContent = '리토폴로지로 8K~9K 버텍스 목표';
+  makeRetopoButton.textContent = '리토폴로지 다시 시도';
 }
 
 function reset3d() {
   meshyRun += 1;
   source3dTaskId = '';
   source3dModelUrl = '';
+  autoDownloadedTasks.clear();
   resetRetopo();
   threeDPanel.hidden = true;
   threeDTitle.textContent = '3D 모델을 만들고 있어요';
@@ -185,7 +187,7 @@ function reset3d() {
   modelLinks.replaceChildren();
   signedNote.hidden = true;
   make3dButton.disabled = false;
-  make3dButton.textContent = '3D 모델 만들기';
+  make3dButton.textContent = '3D·리토폴로지 다시 실행';
 }
 
 async function generate() {
@@ -219,6 +221,7 @@ async function generate() {
     downloadImage.href = currentImage;
     loading.hidden = true;
     completed.hidden = false;
+    await create3d();
   } catch (error) {
     loading.hidden = true;
     placeholder.hidden = false;
@@ -241,26 +244,40 @@ function update3dProgress(task) {
   threeDStatus.textContent = statusMessages[task.status] || '3D 모델을 처리하고 있어요...';
 }
 
-function renderModelLinks(container, task, routePrefix, filenamePrefix) {
-  const labels = { glb: 'GLB 저장', fbx: 'FBX 저장', obj: 'OBJ 저장', usdz: 'USDZ 저장', blend: 'BLEND 저장', stl: 'STL 저장' };
+function renderGlbDownload(container, task, routePrefix, filenamePrefix) {
   container.replaceChildren();
-  Object.entries(task.modelUrls || {}).forEach(([format, url]) => {
-    if (!labels[format] || typeof url !== 'string') return;
-    const link = document.createElement('a');
-    const localDownload = task.taskId
-      ? routePrefix + '/' + encodeURIComponent(task.taskId) + '/model.' + format + '?download=1'
-      : url;
-    link.href = localDownload;
-    link.download = filenamePrefix + '_' + fileTimestamp() + '.' + format;
-    link.addEventListener('click', () => {
-      const stamp = fileTimestamp();
-      link.download = filenamePrefix + '_' + stamp + '.' + format;
-      if (task.taskId) link.href = localDownload + '&stamp=' + stamp;
-    });
-    link.textContent = labels[format];
-    container.append(link);
-  });
-  container.hidden = container.childElementCount === 0;
+  const glbUrl = task.modelUrls && task.modelUrls.glb;
+  if (typeof glbUrl !== 'string' || !glbUrl) {
+    container.hidden = true;
+    return null;
+  }
+
+  const link = document.createElement('a');
+  const updateDownload = () => {
+    const stamp = fileTimestamp();
+    link.href = task.taskId
+      ? routePrefix + '/' + encodeURIComponent(task.taskId) + '/model.glb?download=1&stamp=' + stamp
+      : glbUrl;
+    link.download = filenamePrefix + '_' + stamp + '.glb';
+  };
+  updateDownload();
+  link.addEventListener('click', updateDownload);
+  link.textContent = 'GLB 저장';
+  container.append(link);
+  container.hidden = false;
+  return link;
+}
+
+function autoDownloadGlb(link, task) {
+  if (!link) return;
+  const key = task.taskId || (task.modelUrls && task.modelUrls.glb);
+  if (!key || autoDownloadedTasks.has(key)) return;
+  autoDownloadedTasks.add(key);
+
+  setTimeout(() => {
+    link.click();
+    say('최종 GLB 다운로드를 시작했어요.');
+  }, 200);
 }
 
 function show3dResult(task) {
@@ -280,12 +297,13 @@ function show3dResult(task) {
   viewerHelp.hidden = false;
   viewerHelp.textContent = '3D 모델을 불러오는 중...';
 
-  renderModelLinks(modelLinks, task, '/api/3d', 'pet3D');
+  modelLinks.replaceChildren();
+  modelLinks.hidden = true;
   signedNote.hidden = false;
   source3dTaskId = task.taskId || '';
   source3dModelUrl = glbUrl;
-  retopoAction.hidden = !(source3dTaskId || source3dModelUrl);
-  make3dButton.textContent = '3D 다시 만들기';
+  retopoAction.hidden = true;
+  make3dButton.textContent = '3D·리토폴로지 다시 실행';
 }
 
 modelViewer.addEventListener('progress', event => {
@@ -341,9 +359,11 @@ function showRetopoResult(task) {
   retopoViewer.hidden = false;
   retopoViewerHelp.hidden = false;
   retopoViewerHelp.textContent = '경량화 모델을 불러오는 중...';
-  renderModelLinks(retopoLinks, task, '/api/remesh', 'pet3D_retopo');
+  const downloadLink = renderGlbDownload(retopoLinks, task, '/api/remesh', 'pet3D');
   retopoSignedNote.hidden = false;
+  retopoAction.hidden = true;
   makeRetopoButton.textContent = '리토폴로지 다시 실행';
+  autoDownloadGlb(downloadLink, task);
 }
 
 retopoViewer.addEventListener('progress', event => {
@@ -383,7 +403,7 @@ async function pollRetopo(taskId, run) {
     updateRetopoProgress(task);
     if (task.status === 'SUCCEEDED') {
       showRetopoResult(task);
-      return;
+      return task;
     }
     if (['FAILED', 'CANCELED', 'EXPIRED'].includes(task.status)) {
       throw new Error(task.error || 'Meshy 리토폴로지 작업이 완료되지 못했어요.');
@@ -398,7 +418,7 @@ async function createRetopo() {
 
   resetRetopo();
   const run = retopoRun;
-  retopoAction.hidden = false;
+  retopoAction.hidden = true;
   retopoPanel.hidden = false;
   makeRetopoButton.disabled = true;
   makeRetopoButton.textContent = '리토폴로지 진행 중...';
@@ -418,6 +438,7 @@ async function createRetopo() {
     if (run !== retopoRun) return;
     retopoTitle.textContent = '리토폴로지를 완료하지 못했어요';
     retopoStatus.textContent = error.message || '잠시 후 다시 시도해주세요.';
+    retopoAction.hidden = false;
     say(error.message || '리토폴로지를 완료하지 못했어요.');
   } finally {
     if (run === retopoRun) makeRetopoButton.disabled = false;
@@ -436,7 +457,7 @@ async function poll3d(taskId, run) {
     update3dProgress(task);
     if (task.status === 'SUCCEEDED') {
       show3dResult(task);
-      return;
+      return task;
     }
     if (['FAILED', 'CANCELED', 'EXPIRED'].includes(task.status)) {
       throw new Error(task.error || 'Meshy의 3D 변환 작업이 완료되지 못했어요.');
@@ -465,7 +486,10 @@ async function create3d() {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || '3D 변환을 시작하지 못했어요.');
-    await poll3d(data.taskId, run);
+    const task = await poll3d(data.taskId, run);
+    if (!task || run !== meshyRun) return;
+    threeDStatus.textContent = '원본 3D가 완성되어 리토폴로지를 자동으로 시작합니다.';
+    await createRetopo();
   } catch (error) {
     if (run !== meshyRun) return;
     threeDTitle.textContent = '3D 변환을 완료하지 못했어요';
@@ -478,8 +502,8 @@ async function create3d() {
 
 make.onclick = generate;
 document.querySelector('#retry').onclick = generate;
-make3dButton.onclick = create3d;
-makeRetopoButton.onclick = createRetopo;
+make3dButton.onclick = () => create3d();
+makeRetopoButton.onclick = () => createRetopo();
 downloadImage.addEventListener('click', () => {
   downloadImage.download = 'pet2d_' + fileTimestamp() + '.png';
 });
