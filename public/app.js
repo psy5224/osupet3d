@@ -201,7 +201,7 @@ async function generate() {
 
   const messages = [
     '사진 속 특징을 살펴보는 중...',
-    '고개를 반듯이 세운 정면 자세를 스케치하는 중...',
+    '얼굴·몸을 같은 축에 둔 약 45° 앞 사선 구도를 스케치하는 중...',
     '동화풍 색을 한 겹씩 칠하는 중...',
     '1:1 정사각형 그림을 마무리하는 중...'
   ];
@@ -237,7 +237,7 @@ function update3dProgress(task) {
   const progress = Math.max(0, Math.min(100, Number(task.progress) || 0));
   const statusMessages = {
     PENDING: 'Meshy 작업 순서를 기다리고 있어요...',
-    IN_PROGRESS: '고유 털무늬와 좌우 균형 잡힌 정면 자세를 참고해 3D로 만들고 있어요...',
+    IN_PROGRESS: '고유 털무늬와 좌우 균형 잡힌 약 45° 앞 사선 그림을 참고해 3D로 만들고 있어요...',
     SUCCEEDED: '3D 모델이 완성됐어요.'
   };
   threeDPercent.textContent = Math.round(progress) + '%';
