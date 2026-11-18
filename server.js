@@ -10,7 +10,6 @@ const APP_INFO = {
   version: APP_PACKAGE.version || '1.0.0',
   updatedAt: APP_PACKAGE.appUpdatedAt || null
 };
-const STYLE_REFERENCE = 'D:\\Libraries\\Downloads\\magnific_img1-._SObMbD5Ub8.png';
 const MESHY_API = 'https://api.meshy.ai/openapi/v1/image-to-3d';
 const MESHY_REMESH_API = 'https://api.meshy.ai/openapi/v1/remesh';
 const MIME = {
@@ -83,63 +82,30 @@ async function generate(req, res) {
       form.append('image[]', file.blob, 'pet-' + (index + 1) + '.' + file.ext);
     });
 
-    const deployedStylePath = path.join(PUBLIC, 'style-reference.png');
-    const stylePath = fs.existsSync(deployedStylePath) ? deployedStylePath : STYLE_REFERENCE;
-    const hasStyleReference = fs.existsSync(stylePath);
-    if (hasStyleReference) {
-      form.append('image[]', new Blob([fs.readFileSync(stylePath)], { type: 'image/png' }), 'style-reference.png');
-    }
+    const prompt = `첨부한 개체 참고 사진은 모두 같은 동물 한 마리의 사진입니다. 이 동물 한 마리가 순백색 스튜디오 바닥에 네 발을 딛고 서 있는 전신 실사 이미지 한 장을 생성해 주세요.
 
-    const petInputMap = images
-      .map((_, index) => 'Image ' + (index + 1) + ': a photograph of the same target pet, which is either one dog or one cat; use only for species, identity, and anatomy.')
-      .join('\n');
-    const styleInputMap = hasStyleReference
-      ? '\nImage ' + (images.length + 1) + ': STYLE REFERENCE ONLY. Apply only its visual language to the target pet. Never copy or infer the reference animal\'s species, breed, colors, markings, anatomy, pose, expression, composition, or checkerboard background.'
-      : '';
-    const prompt = `GOAL - HIGHEST PRIORITY
-First determine from Images 1-${images.length} whether the target pet is a dog or a cat. Then create one irresistibly cute, warm, fairy-tale children's picture-book illustration of that exact same pet. The result must immediately feel like a lovable main character from a premium illustrated storybook, never merely a traced or filtered photograph.
+카메라와 구도
 
-INPUT ROLES
-${petInputMap}${styleInputMap}
+카메라는 동물의 눈높이에서 몸의 정면 기준 약 20° 옆에 둡니다. 동물은 화면 왼쪽 앞을 향해 서 있고, 얼굴과 가슴이 카메라에 가장 가깝습니다. 어깨에서 엉덩이까지 이어지는 몸통은 화면 오른쪽 뒤로 멀어집니다. 몸통의 길이가 원근에 따라 자연스럽게 짧아 보이고, 양쪽 눈과 주둥이 앞면, 가슴, 몸통 한쪽 면이 함께 보여야 합니다.
 
-SPECIES AND TARGET IDENTITY — MANDATORY
-The output must remain the same species as the photographed pet: dog stays dog, cat stays cat. Never turn a cat into a dog, a dog into a cat, or create a hybrid. Faithfully preserve the pet's recognizable identity: exact coat colors, patches, stripes and markings; breed or mixed-breed traits; ear shape and position; muzzle or feline whisker-pad shape; eye color and shape; nose color; body proportions; leg length; paw shape; the presence or absence of a tail and its actual length, thickness and natural shape when present; fur length and texture; whiskers for cats; and every distinctive feature. Combine the photos only to understand this one pet. Do not average away unique markings or borrow any animal features from the style reference. The mandatory pose instructions below override the head angle, leg placement, and tail position seen in any input image, but never override the pet's anatomy or identity.
+머리, 목, 몸통은 하나의 축을 따라 같은 방향을 향합니다. 머리를 좌우로 돌리거나 기울이지 않습니다. 앞발 두 개는 화면 왼쪽 아래에 나란히 보이고, 뒷발 두 개는 그보다 화면 오른쪽 뒤에 보여야 합니다. 앞다리는 어깨 아래에, 뒷다리는 골반 아래에 자연스럽게 놓고, 네 발이 모두 바닥에 닿은 상태에서 각각의 윤곽이 구분되도록 카메라 위치를 미세하게 조정해 주세요.
 
-STYLE — MANDATORY
-Match the visual style of the STYLE REFERENCE as closely as possible: a charming hand-painted children's storybook illustration; bold, softly irregular dark ink outlines; rounded and appealing shapes; layered fur tufts drawn with expressive scalloped brush shapes; translucent watercolor washes mixed with soft opaque gouache-like shading; visible colored-pencil and paper texture; gentle tonal modeling; warm golden-brown edge highlights; rich but cozy colors; glossy expressive eyes at the target pet's natural size; polished professional picture-book finish. Borrow the painting technique only, never an exaggerated head or eye size from the style reference. It must feel hand-drawn, warm, whimsical, dimensional, and distinctly fairy-tale-like. Do not make it a flat vector icon, generic digital cartoon, anime, 3D render, photograph, or photorealistic painting.
+개체의 특징
 
-NATURAL PROPORTIONS AND GENTLE EXPRESSION - MANDATORY
-Keep the pet warm and appealing while unmistakably preserving the photographed dog or cat. Match the pet's natural head-to-torso size ratio using the target photos, accounting for perspective in close-up photos. Do not enlarge the head, cheeks, forehead, eyes, or surrounding head fur to create cuteness. Do not shrink or compress the torso to make the head look disproportionately large. No oversized cartoon head, bobblehead, chibi, super-deformed, doll-like, or baby-character proportions. These natural proportion requirements take priority over cute or storybook styling. Keep any subtle leg shortening restrained so the overall head-to-body balance remains natural; all four legs must remain anatomically complete, equally load-bearing, and appropriate to the target pet, even where the three-quarter view naturally occludes part of a leg. Express warmth through soft brushwork, the pet's natural glossy eyes, species-appropriate facial anatomy, layered fur, and a calm, gentle expression. For a cat, retain natural feline eyes, whisker pads, whiskers, nose, paws, and its actual tail if present; do not give it a dog's muzzle, grin, floppy dog ears, or dog-like body. For a dog, retain natural canine muzzle, ears, paws, and breed traits. Preserve every identity-defining color, marking, ear, muzzle, existing tail, and coat feature. Avoid a tiny body under a large head, artificially large eyes, a stretched torso, a stern or aggressive expression, uncanny anatomy, photorealism, or a generic mascot appearance.
+정면 사진에서 얼굴과 눈·코·귀의 형태를, 옆모습과 전신 사진에서 머리와 몸통의 비율, 다리 길이와 굵기를 확인해 주세요. 털의 길이와 볼륨, 털색과 무늬는 해당 부위가 가장 선명한 사진을 기준으로 재현해 주세요. 좌우 무늬의 차이와 불규칙한 경계를 유지하고, 사진에서 확인되는 무늬만 반영해 주세요.
 
-NO CLOTHING OR ACCESSORIES — MANDATORY
-Show the pet completely natural with uncovered fur and anatomy. Remove and never draw any clothing, costume, shirt, sweater, dress, jacket, cape, hat, hood, bow, ribbon, bandana, collar, harness, leash, tag, jewelry, diaper, socks, shoes, eyewear, or other wearable accessory, even when one appears in the input photos or style reference. Reconstruct the naturally occluded neck, chest, back, and leg fur from the surrounding coat colors, markings, length, and texture so the pet looks complete and recognizable. Wearable removal overrides preservation of photographed objects, but must not alter the pet's true body, fur, or markings.
+꼬리
 
-3D-READY BODY SHAPE — MANDATORY
-Keep the source-based natural head-to-torso ratio described above consistent and unambiguous for 3D reconstruction, with matching leg lengths within each left-right pair, a stable naturally proportioned torso, a clear chest and waist, and a readable neck-to-body connection. Any restrained leg stylization must preserve the natural overall balance and must not make the head dominant. Keep a clean, unmistakable full-body silhouette and clearly define visible body parts, joints, and paw contours. Use white separation only where it occurs naturally in the required approximately 45-degree front three-quarter view. A leg or an existing tail may be naturally occluded behind the body; do not change the required camera angle, twist the pet, stagger its legs, move its tail sideways, or invent visible anatomy merely to expose every part. Do not merge limbs into fur, flatten or inflate the torso, or let fluffy brush shapes obscure visible anatomical connections.
+참고 사진에서 꼬리가 확인되면 실제 길이, 굵기, 색, 털의 결을 유지해 주세요. 꼬리 뿌리에서 올라오는 부분은 바닥과 약 90°를 이루도록 위로 세우고, 끝부분은 개체 고유의 곡선을 유지해 주세요. 꼬리가 화면 오른쪽 뒤에서 올라오도록 하고, 귀와 겹치지 않게 뿌리부터 끝까지 보이게 해 주세요. 모든 참고 사진에서 꼬리가 가려져 확인할 수 없거나 꼬리가 없는 개체는 보이는 모습 그대로 표현해 주세요.
 
-BILATERAL SYMMETRY FOR RIGGING — MANDATORY
-Construct the pet around one clean vertical sagittal center plane with natural left-right bilateral anatomical symmetry. Center the head, neck, chest, straight spine, and pelvis on this same plane; the head and torso must face the same forward direction with no neck turn or body twist. Match the left and right shoulder height, hip height, front-leg length and thickness, hind-leg length and thickness, joint height, paw size, chest volume, and pelvis volume. Keep paired legs equally straight, equally load-bearing, and mirrored in their neutral stance in 3D space. The camera observes this symmetrical stance from approximately 45 degrees to the front. Natural perspective may make the nearer side appear larger or shift paired paws in the image; do not distort the anatomy or force flat-image symmetry to remove those perspective differences. Do not twist, skew, bend, shorten, enlarge, or offset one side of the actual body. Preserve each side's real identity-defining asymmetric coat markings, patches, stripes, eye colors, ear shapes, and fur patterns from the source photos. Never mirror, duplicate, average, or erase the pet's markings to create symmetry. Symmetry applies to the underlying body structure and neutral stance, not to naturally asymmetric identity features.
+프레이밍과 조명
 
-CANVAS AND BACKGROUND — MANDATORY
-Exact 1:1 square composition. Pure solid white (#FFFFFF) background only. One pet only, full body, centered, with generous white breathing room on every side so ears, whiskers, nose, paws, and any naturally visible part of an existing tail are never cropped by the frame. Natural occlusion by the body is allowed. No scenery, props, cast shadow, ground shadow, floor line, texture, border, transparency, or checkerboard.
-
-POSE — MANDATORY
-Use a full-body front three-quarter portrait, with the camera approximately 45 degrees to the pet's left from a straight-ahead frontal position. Show the front and the pet's left side, with the torso and hindquarters receding toward the right side of the canvas. Create this angle by positioning the camera around the pet, not by twisting its body or turning its head independently. Keep the head, neck, chest, spine, and pelvis aligned on the same forward-facing body axis. Hold the head upright and level without tilt or roll; the face and gaze follow the body's forward direction, so the face is also seen at approximately 45 degrees. Do not turn the face back toward the camera or force the eyes to appear the same size or at identical image coordinates. Place the camera at the pet's eye level with a level horizon and a natural, mild perspective that does not exaggerate the head. No chin lift, chin tuck, sideways lean, neck turn, or body twist. Avoid a straight-on portrait, exact side profile, rear view, top-down view, low-angle view, wide-angle distortion, or cropped body.
-
-STANCE - MANDATORY
-Show the pet calmly standing completely still in a neutral, natural species-appropriate symmetrical stance, regardless of any pose in the input photos or style reference. Frame the full body from ears to paws. Construct exactly four anatomically correct legs and paws. Place the two front paws at a natural shoulder-width stance and the two hind paws at a natural hip-width stance, with equal left-right distance from the body's center plane within each pair. Match the length, thickness, joint height, paw size, paw direction, and fore-aft position of each left-right pair in 3D space. Do not stagger one leg forward or backward or splay one leg sideways to expose it. All four paws must be firmly and evenly planted on the same invisible horizontal ground plane with balanced support. Keep every leg straight but naturally relaxed, vertical, and stable, with each paw contacting the ground evenly. Show separate leg contours wherever the three-quarter view naturally allows, while permitting partial natural occlusion; never break the pose or add extra paws to make four paws visible. Keep the shoulders, spine, chest, abdomen, and hips level and centered. Do not lean, tilt the pelvis, drop one hip or shoulder, bend one supporting leg, stand on tiptoe, or make any paw look light, hovering, or ready to step. No paw may be lifted. No walking, trotting, running, jumping, leaping, floating, sitting, lying down, crouching, play bow, rearing, dancing, dynamic action pose, head tilt, motion lines, or wind-swept motion.
-
-TAIL PRESENCE AND CENTER ALIGNMENT - MANDATORY
-Determine whether a tail is actually present using only the target pet photographs, never the style reference or a species/breed assumption. If the pet truly has no tail, draw no tail at all: no invented tail, stump, tuft, or tail-like appendage. Preserve a real short or bobbed tail at its actual short length; do not lengthen it. A tail hidden or cropped out of a photograph is not proof that the pet has no tail. If its presence or shape cannot be established from any target photo, do not invent an exposed tail or guess its length or shape; allow uncertain rear details to remain naturally occluded where possible without changing the required camera angle or anatomy.
-When an actual tail is present, attach it only at the anatomically correct root centered on the rear pelvis. Keep the entire tail centerline, from root to tip, within the exact vertical sagittal center plane of the spine. This is anatomical center alignment in 3D space, not a requirement to place the tail on the canvas's vertical centerline: the 45-degree camera may naturally project the centered tail toward the right side of the image. Do not bend the tail sideways in the pet's own coordinate system or move its root or tip outside the sagittal center plane. Preserve its real length, thickness, fur texture, markings, and recognizable natural curvature within that center plane. If the correctly centered tail is hidden behind the body, leave it hidden; never move it to one side, lengthen it, or force it upward just to make it visible. Keep any naturally visible part uncropped, without adding a second tail or an extra appendage.
-
-FINAL CONSTRAINTS
-No words, letters, logo, watermark, frame, clothing, collar, harness, accessory, extra animal, extra limb, invented tail, checkerboard, or photorealism. Prioritize photo-faithful natural head-to-body proportions without an enlarged head, an approximately 45-degree front three-quarter view of the aligned face and body, a level untilted head, symmetrical left-right paw pairs in 3D space, and an existing tail only on the anatomical center plane. Preserve the pet's original side-specific markings. Never achieve apparent symmetry by mirroring the entire image or its coat pattern. Species, anatomy, and tail presence come only from Images 1-${images.length}; visual style comes only from the STYLE REFERENCE image when provided.`;
+세로가 가로보다 조금 긴 프레임에 귀 끝, 네 발의 발끝, 확인되는 꼬리 끝까지 모두 담고 사방에 여백을 남겨 주세요. 배경과 바닥은 경계선 없이 순백색으로 이어지고, 발 바로 아래에만 옅은 접지 그림자가 생기도록 해 주세요. 부드러운 스튜디오 조명으로 털의 결, 눈의 반사광, 코와 발의 질감을 실제 사진처럼 표현해 주세요. 화면에는 동물 한 마리만 담고 목줄, 하네스, 이름표, 소품, 사람, 글자, 화면 아이콘은 제외해 주세요.`;
 
     form.append('prompt', prompt);
     form.append('model', 'gpt-image-2.6-sunburst');
     form.append('quality', 'high');
-    form.append('size', '2048x2048');
+    form.append('size', '1792x2240');
     form.append('background', 'opaque');
     form.append('output_format', 'png');
 
@@ -498,11 +464,6 @@ const server = http.createServer((req, res) => {
   if (req.method !== 'GET') return json(res, 405, { error: '허용되지 않은 요청이에요.' });
 
   const clean = decodeURIComponent(req.url.split('?')[0]);
-  if (clean === '/style-reference.png' && fs.existsSync(STYLE_REFERENCE)) {
-    res.writeHead(200, { 'Content-Type': 'image/png' });
-    return fs.createReadStream(STYLE_REFERENCE).pipe(res);
-  }
-
   const target = path.join(PUBLIC, clean === '/' ? 'index.html' : clean);
   if (!target.startsWith(PUBLIC)) return json(res, 403, { error: '접근할 수 없어요.' });
   fs.readFile(target, (error, data) => {
