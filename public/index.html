@@ -31,7 +31,7 @@
       </label>
       <div id="previews" class="previews"></div>
       <div id="photoHint" class="photo-hint">사진을 1장 이상 넣어주세요.</div>
-      <div class="fixed-output">업로드한 실제 사진만 참고해 고유한 생김새와 털무늬, 자연스러운 머리·몸 비율을 살려요. 약 20° 앞 사선 · 흰 배경 · 전신 · 세로 4:5 · 스튜디오 실사.</div>
+      <div class="fixed-output">업로드한 실제 사진만 참고해 고유한 생김새와 털무늬, 자연스러운 머리·몸 비율을 살려요. 약 20° 앞 사선 · 흰 배경 · 전신 · 세로 4:5 · 스튜디오 실사.<br>새 리토폴로지 작업의 기본 목표: 쿼드 20,000 폴리곤.</div>
       <button class="make" id="make" disabled>스튜디오 이미지 만들기 <i>→</i></button>
       <p class="privacy">사진은 이미지 생성에만 사용하며 서버에 저장하지 않아요.</p>
     </div>
@@ -98,7 +98,7 @@
             </div>
             <p id="retopoStatus">원본 3D 모델을 확인하는 중...</p>
             <div class="three-d-progress" aria-hidden="true"><span id="retopoProgressBar"></span></div>
-            <p class="retopo-note">Meshy는 버텍스가 아닌 폴리곤 목표치를 받으므로 쿼드 8,500 폴리곤으로 처리합니다. 실제 버텍스 수는 모델 형상에 따라 8천~9천 범위를 벗어날 수 있습니다.</p>
+            <p class="retopo-note">폴리곤 목표는 버텍스 수와 다르며, 실제 폴리곤·버텍스 수는 결과 모델에 따라 달라집니다.</p>
             <model-viewer
               id="retopoViewer"
               hidden

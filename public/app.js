@@ -365,7 +365,7 @@ function showRetopoResult(task) {
   retopoTitle.textContent = '리토폴로지가 완료됐어요';
   retopoPercent.textContent = '100%';
   retopoProgressBar.style.width = '100%';
-  retopoStatus.textContent = '쿼드 8,500 폴리곤 목표로 만든 모델을 불러오는 중...';
+  retopoStatus.textContent = '리토폴로지가 완료된 모델을 불러오는 중...';
   retopoViewer.classList.remove('ready');
   retopoViewer.setAttribute('camera-controls', '');
   if (task.thumbnailUrl) retopoViewer.setAttribute('poster', task.thumbnailUrl);

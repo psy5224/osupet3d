@@ -12,6 +12,7 @@ const APP_INFO = {
 };
 const MESHY_API = 'https://api.meshy.ai/openapi/v1/image-to-3d';
 const MESHY_REMESH_API = 'https://api.meshy.ai/openapi/v1/remesh';
+const REMESH_TARGET_POLYCOUNT = 20_000;
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -88,7 +89,9 @@ async function generate(req, res) {
 
 카메라는 동물의 눈높이에서 몸의 정면 기준 약 20° 옆에 둡니다. 동물은 화면 왼쪽 앞을 향해 서 있고, 얼굴과 가슴이 카메라에 가장 가깝습니다. 어깨에서 엉덩이까지 이어지는 몸통은 화면 오른쪽 뒤로 멀어집니다. 몸통의 길이가 원근에 따라 자연스럽게 짧아 보이고, 양쪽 눈과 주둥이 앞면, 가슴, 몸통 한쪽 면이 함께 보여야 합니다.
 
-머리, 목, 몸통은 하나의 축을 따라 같은 방향을 향합니다. 머리를 좌우로 돌리거나 기울이지 않습니다. 입은 자연스럽게 다물고, 혀가 보이지 않는 편안한 기본 표정으로 표현해 주세요. 앞발 두 개는 화면 왼쪽 아래에 나란히 보이고, 뒷발 두 개는 그보다 화면 오른쪽 뒤에 보여야 합니다. 앞다리는 어깨 아래에, 뒷다리는 골반 아래에 자연스럽게 놓고, 네 발이 모두 바닥에 닿은 상태에서 각각의 윤곽이 구분되도록 카메라 위치를 미세하게 조정해 주세요.
+머리, 목, 몸통은 하나의 축을 따라 같은 방향을 향합니다. 머리를 좌우로 돌리거나 기울이지 않습니다. 입은 자연스럽게 다물고, 혀가 보이지 않는 편안한 기본 표정으로 표현해 주세요.
+
+네 발로 체중을 고르게 지탱하는 편안한 자세로 서 주세요. 앞발은 양쪽 어깨 너비 정도로, 뒷발은 양쪽 골반 너비 정도로 벌려 주세요. 약 20° 앞 사선 구도에서 앞발 두 개는 화면 왼쪽 앞에, 뒷발 두 개는 오른쪽 뒤에 놓이게 해 주세요. 카메라 위치를 미세하게 조정해 다리 사이로 흰 배경이 보이고 네 발의 윤곽이 각각 구분되게 해 주세요. 무릎과 발끝은 자연스럽게 앞을 향하게 해 주세요.
 
 개체의 특징
 
@@ -279,7 +282,7 @@ async function createRemesh(req, res) {
           ...input,
           target_formats: ['glb'],
           topology: 'quad',
-          target_polycount: 8500
+          target_polycount: REMESH_TARGET_POLYCOUNT
         })
       });
       return { apiRes, result: await apiRes.json().catch(() => ({})) };
@@ -301,7 +304,7 @@ async function createRemesh(req, res) {
     if (!isValidMeshyTaskId(result.result)) {
       throw new Error('Meshy 리토폴로지 작업 ID를 받지 못했어요.');
     }
-    json(res, 202, { taskId: result.result });
+    json(res, 202, { taskId: result.result, targetPolycount: REMESH_TARGET_POLYCOUNT });
   } catch (error) {
     console.error(error);
     json(res, 500, { error: error.message || '리토폴로지 요청을 시작하지 못했어요.' });
@@ -339,8 +342,7 @@ async function getRemesh(req, res, taskId) {
       error: result.task_error && result.task_error.message ? result.task_error.message : '',
       consumedCredits: Number.isFinite(result.consumed_credits) ? result.consumed_credits : null,
       topology: 'quad',
-      targetPolycount: 8500,
-      targetVertexRange: [8000, 9000]
+      targetPolycount: Number.isInteger(result.target_polycount) ? result.target_polycount : null
     });
   } catch (error) {
     console.error(error);
