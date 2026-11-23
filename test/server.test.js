@@ -151,7 +151,8 @@ test('the generation request carries the single-subject black-background widesho
   assert.match(prompt, /20\s*[°도]/);
   assert.match(prompt, /4\s*:\s*3/);
   assert.match(prompt, /고정 와이드숏/);
-  assert.match(prompt, /프레임 높이의 약 절반/);
+  assert.match(prompt, /프레임 높이의 약 35%/);
+  assert.match(prompt, /검정 여백은 합쳐서 프레임 높이의 60~70%/);
   assert.match(prompt, /#000000/);
   assert.match(prompt, /그림자[\s\S]*반사[\s\S]*제외/);
   assert.equal(calls.length, 1);

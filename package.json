@@ -1,7 +1,7 @@
 {
   "name": "osupet2dvideo",
-  "version": "1.0.0",
-  "appUpdatedAt": "2026-11-23T11:16:00+09:00",
+  "version": "1.0.1",
+  "appUpdatedAt": "2026-11-23T13:10:29+09:00",
   "private": true,
   "scripts": {
     "dev": "node server.js",
