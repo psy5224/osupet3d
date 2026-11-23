@@ -1,1 +1,12 @@
-{"name":"monggeul","version":"1.3.12","appUpdatedAt":"2026-11-20T12:02:25+09:00","private":true,"scripts":{"dev":"node server.js","start":"node server.js"},"engines":{"node":">=20"}}
+{
+  "name": "osupet2dvideo",
+  "version": "1.0.0",
+  "appUpdatedAt": "2026-11-23T11:16:00+09:00",
+  "private": true,
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": { "node": ">=20" }
+}

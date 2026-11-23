@@ -1,7 +1,6 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { Readable } = require('stream');
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC = path.join(__dirname, 'public');
@@ -10,9 +9,8 @@ const APP_INFO = {
   version: APP_PACKAGE.version || '1.0.0',
   updatedAt: APP_PACKAGE.appUpdatedAt || null
 };
-const MESHY_API = 'https://api.meshy.ai/openapi/v1/image-to-3d';
-const MESHY_REMESH_API = 'https://api.meshy.ai/openapi/v1/remesh';
-const REMESH_TARGET_POLYCOUNT = 20_000;
+const OUTPUT_WIDTH = 2304;
+const OUTPUT_HEIGHT = 1728;
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -38,18 +36,32 @@ function json(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+function requestError(message, status = 400) {
+  return Object.assign(new Error(message), { status });
+}
+
 function readJson(req) {
   return new Promise((resolve, reject) => {
-    let raw = '';
+    const chunks = [];
+    let size = 0;
+    let tooLarge = false;
     req.on('data', chunk => {
-      raw += chunk;
-      if (raw.length > 45_000_000) req.destroy();
+      if (tooLarge) return;
+      size += chunk.length;
+      if (size > 45_000_000) {
+        tooLarge = true;
+        chunks.length = 0;
+        reject(requestError('사진 용량이 너무 커요. 더 작은 사진을 선택해주세요.', 413));
+        return;
+      }
+      chunks.push(chunk);
     });
     req.on('end', () => {
+      if (tooLarge) return;
       try {
-        resolve(JSON.parse(raw));
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
       } catch {
-        reject(new Error('요청 형식이 올바르지 않아요.'));
+        reject(requestError('요청 형식이 올바르지 않아요.'));
       }
     });
     req.on('error', reject);
@@ -57,33 +69,19 @@ function readJson(req) {
 }
 
 function imageBlob(value) {
-  const match = value.match(/^data:(image\/(?:png|jpeg|webp));base64,(.+)$/);
-  if (!match) throw new Error('지원하지 않는 이미지 형식이에요.');
+  const match = typeof value === 'string' && value.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!match) throw requestError('지원하지 않는 이미지 형식이에요. PNG, JPG, WEBP 사진을 넣어주세요.');
+  const bytes = Buffer.from(match[2], 'base64');
+  if (!bytes.length || bytes.toString('base64').replace(/=+$/, '') !== match[2].replace(/=+$/, '')) {
+    throw requestError('사진 데이터가 올바르지 않아요.');
+  }
   return {
-    blob: new Blob([Buffer.from(match[2], 'base64')], { type: match[1] }),
+    blob: new Blob([bytes], { type: match[1] }),
     ext: match[1].split('/')[1].replace('jpeg', 'jpg')
   };
 }
 
-async function generate(req, res) {
-  if (!process.env.OPENAI_API_KEY) {
-    return json(res, 503, { error: '서버에 OPENAI_API_KEY가 설정되지 않았어요.' });
-  }
-
-  try {
-    const body = await readJson(req);
-    const images = body.images;
-    if (!Array.isArray(images) || images.length < 1 || images.length > 6) {
-      return json(res, 400, { error: '강아지 또는 고양이 사진을 1장 이상 6장 이하로 넣어주세요.' });
-    }
-
-    const form = new FormData();
-    images.forEach((value, index) => {
-      const file = imageBlob(value);
-      form.append('image[]', file.blob, 'pet-' + (index + 1) + '.' + file.ext);
-    });
-
-    const prompt = `첨부한 개체 참고 사진은 모두 같은 동물 한 마리의 사진입니다. 이 동물 한 마리가 순백색 스튜디오 바닥에 네 발을 딛고 서 있는 전신 실사 이미지 한 장을 생성해 주세요.
+const PROMPT = `첨부한 개체 참고 사진은 모두 같은 동물 한 마리의 사진입니다. 이 동물 한 마리가 평평한 스튜디오 바닥에 네 발을 딛고 서 있는 전신 실사 이미지 한 장을 생성해 주세요.
 
 카메라와 구도
 
@@ -91,7 +89,7 @@ async function generate(req, res) {
 
 머리, 목, 몸통은 하나의 축을 따라 같은 방향을 향합니다. 머리를 좌우로 돌리거나 기울이지 않습니다. 입은 자연스럽게 다물고, 혀가 보이지 않는 편안한 기본 표정으로 표현해 주세요.
 
-네 발로 체중을 고르게 지탱하는 편안한 자세로 서 주세요. 앞발은 양쪽 어깨 너비 정도로, 뒷발은 양쪽 골반 너비 정도로 벌려 주세요. 약 20° 앞 사선 구도에서 앞발 두 개는 화면 왼쪽 앞에, 뒷발 두 개는 오른쪽 뒤에 놓이게 해 주세요. 카메라 위치를 미세하게 조정해 다리 사이로 흰 배경이 보이고 네 발의 윤곽이 각각 구분되게 해 주세요. 무릎과 발끝은 자연스럽게 앞을 향하게 해 주세요.
+네 발로 체중을 고르게 지탱하는 편안한 자세로 서 주세요. 앞발은 양쪽 어깨 너비 정도로, 뒷발은 양쪽 골반 너비 정도로 벌려 주세요. 약 20° 앞 사선 구도에서 앞발 두 개는 화면 왼쪽 앞에, 뒷발 두 개는 오른쪽 뒤에 놓이게 해 주세요. 카메라 위치를 미세하게 조정해 다리 사이로 검정 배경이 보이고 네 발의 윤곽이 각각 구분되게 해 주세요. 무릎과 발끝은 자연스럽게 앞을 향하게 해 주세요.
 
 개체의 특징
 
@@ -103,15 +101,52 @@ async function generate(req, res) {
 
 프레이밍과 조명
 
-세로가 가로보다 조금 긴 프레임에 귀 끝, 네 발의 발끝, 확인되는 꼬리 끝까지 모두 담고 사방에 여백을 남겨 주세요. 배경과 바닥은 경계선 없이 순백색으로 이어지고, 발 바로 아래에만 옅은 접지 그림자가 생기도록 해 주세요. 부드러운 스튜디오 조명으로 털의 결, 눈의 반사광, 코와 발의 질감을 실제 사진처럼 표현해 주세요. 화면에는 동물 한 마리만 담고 목줄, 하네스, 이름표, 소품, 사람, 글자, 화면 아이콘은 제외해 주세요.`;
+가로 4:3 고정 와이드숏 한 컷입니다. 동물은 화면 가로 중앙에 두고, 발끝에서 귀 끝(또는 더 높은 꼬리 끝)까지 전신의 높이가 프레임 높이의 약 절반을 차지하도록 카메라 거리를 잡아 주세요. 귀 끝, 네 발의 발끝, 확인되는 꼬리 끝을 모두 담고 사방에 넉넉한 여백을 남겨 주세요.
 
-    form.append('prompt', prompt);
-    form.append('model', 'gpt-image-2.6-sunburst');
-    form.append('quality', 'high');
-    form.append('size', '1792x2240');
-    form.append('background', 'opaque');
-    form.append('output_format', 'png');
+배경과 바닥 전체는 경계선이나 수평선 없이 이어지는 균일한 순검정(#000000)입니다. 동물 바깥의 여백과 다리 사이도 같은 검정으로 채워 주세요. 발밑 접지 그림자를 포함한 모든 바닥 그림자, 비침과 반사상, 광택, 회색 그라데이션, 무늬는 제외해 주세요. 동물 자체에만 부드러운 스튜디오 조명을 비춰 검은 털도 원래의 색과 결이 드러나도록 하고, 눈의 자연스러운 반사광과 코·발의 질감은 실제 사진처럼 표현해 주세요. 한 프레임에는 이 동물 한 마리만 담고 목줄, 하네스, 이름표, 소품, 사람, 글자, 화면 아이콘은 제외해 주세요.`;
 
+function validateOutput(b64) {
+  if (typeof b64 !== 'string' || !b64) throw new Error('완성 이미지를 받지 못했어요.');
+  const png = Buffer.from(b64, 'base64');
+  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  if (png.length < 33 || !png.subarray(0, 8).equals(signature) || png.toString('ascii', 12, 16) !== 'IHDR') {
+    throw new Error('완성된 PNG 이미지가 올바르지 않아요. 다시 시도해주세요.');
+  }
+  if (png.readUInt32BE(16) !== OUTPUT_WIDTH || png.readUInt32BE(20) !== OUTPUT_HEIGHT) {
+    throw new Error('요청한 4:3 크기의 이미지를 받지 못했어요. 다시 시도해주세요.');
+  }
+}
+
+async function generate(req, res) {
+  if (!process.env.OPENAI_API_KEY) {
+    return json(res, 503, { error: '서버에 OPENAI_API_KEY가 설정되지 않았어요.' });
+  }
+
+  let form;
+  try {
+    const body = await readJson(req);
+    const images = body && body.images;
+    if (!Array.isArray(images) || images.length < 1 || images.length > 6) {
+      throw requestError('강아지 또는 고양이 사진을 1장 이상 6장 이하로 넣어주세요.');
+    }
+    form = new FormData();
+    images.forEach((value, index) => {
+      const file = imageBlob(value);
+      form.append('image[]', file.blob, 'pet-' + (index + 1) + '.' + file.ext);
+    });
+  } catch (error) {
+    return json(res, error.status || 400, { error: error.message || '사진을 읽지 못했어요.' });
+  }
+
+  form.append('prompt', PROMPT);
+  form.append('model', 'gpt-image-2.6-sunburst');
+  form.append('quality', 'high');
+  form.append('size', OUTPUT_WIDTH + 'x' + OUTPUT_HEIGHT);
+  form.append('n', '1');
+  form.append('background', 'opaque');
+  form.append('output_format', 'png');
+
+  try {
     const apiRes = await fetch('https://api.openai.com/v1/images/edits', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + process.env.OPENAI_API_KEY },
@@ -121,353 +156,31 @@ async function generate(req, res) {
     if (!apiRes.ok) {
       throw new Error((result.error && result.error.message) || '이미지를 만들지 못했어요.');
     }
-
     const b64 = result.data && result.data[0] && result.data[0].b64_json;
-    if (!b64) throw new Error('완성 이미지를 받지 못했어요.');
-    json(res, 200, { image: 'data:image/png;base64,' + b64 });
+    validateOutput(b64);
+    return json(res, 200, { image: 'data:image/png;base64,' + b64 });
   } catch (error) {
-    console.error(error);
-    json(res, 500, { error: error.message || '잠시 후 다시 시도해주세요.' });
-  }
-}
-
-function meshyErrorMessage(status, result) {
-  const detail = result && (
-    result.message ||
-    result.detail ||
-    (typeof result.error === 'string' && result.error) ||
-    (result.error && result.error.message) ||
-    (typeof result.task_error === 'string' && result.task_error) ||
-    (result.task_error && result.task_error.message)
-  );
-  if (status === 401) return 'Meshy API 키가 올바르지 않아요.';
-  if (status === 402) return 'Meshy 크레딧이 부족해요. Meshy 계정의 잔액을 확인해주세요.';
-  if (status === 429) return 'Meshy 요청 한도를 초과했어요. 잠시 후 다시 시도해주세요.';
-  return detail || 'Meshy에서 3D 모델을 만들지 못했어요.';
-}
-
-function isValidMeshyTaskId(value) {
-  return typeof value === 'string' && value.length > 0 && value.length <= 256 && !/[\u0000-\u001F\u007F]/.test(value);
-}
-
-function decodeTaskId(value) {
-  try {
-    const decoded = decodeURIComponent(value);
-    return isValidMeshyTaskId(decoded) ? decoded : '';
-  } catch {
-    return '';
-  }
-}
-
-function validMeshyModelUrl(value) {
-  if (typeof value !== 'string') return '';
-  try {
-    const parsed = new URL(value);
-    const isMeshyHost = parsed.hostname === 'meshy.ai' || parsed.hostname.endsWith('.meshy.ai');
-    return parsed.protocol === 'https:' && isMeshyHost ? parsed.href : '';
-  } catch {
-    return '';
-  }
-}
-
-async function create3d(req, res) {
-  if (!process.env.MESHY_API_KEY) {
-    return json(res, 503, { error: '서버에 MESHY_API_KEY가 설정되지 않았어요.' });
-  }
-
-  try {
-    const body = await readJson(req);
-    const image = body.image;
-    if (
-      typeof image !== 'string' ||
-      image.length > 40_000_000 ||
-      !/^data:image\/(?:png|jpeg);base64,/.test(image)
-    ) {
-      return json(res, 400, { error: '3D로 변환할 PNG 또는 JPEG 이미지가 필요해요.' });
-    }
-
-    // Meshy's symmetry_mode is deprecated and has no effect. Encourage balanced
-    // geometry through the aligned input pose above while preserving coat markings.
-    const apiRes = await fetch(MESHY_API, {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer ' + process.env.MESHY_API_KEY,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        image_url: image,
-        model_type: 'standard',
-        ai_model: 'meshy-6',
-        should_remesh: false,
-        should_texture: true,
-        enable_pbr: true,
-        image_enhancement: false,
-        remove_lighting: true,
-        target_formats: ['glb']
-      })
-    });
-    const result = await apiRes.json().catch(() => ({}));
-    if (!apiRes.ok) {
-      return json(res, apiRes.status, { error: meshyErrorMessage(apiRes.status, result) });
-    }
-    if (!result.result) throw new Error('Meshy 작업 ID를 받지 못했어요.');
-    json(res, 202, { taskId: result.result });
-  } catch (error) {
-    console.error(error);
-    json(res, 500, { error: error.message || '3D 변환 요청을 시작하지 못했어요.' });
-  }
-}
-
-async function get3d(req, res, taskId) {
-  if (!process.env.MESHY_API_KEY) {
-    return json(res, 503, { error: '서버에 MESHY_API_KEY가 설정되지 않았어요.' });
-  }
-  if (!isValidMeshyTaskId(taskId)) {
-    return json(res, 400, { error: '올바르지 않은 Meshy 작업 ID예요.' });
-  }
-
-  try {
-    const apiRes = await fetch(MESHY_API + '/' + encodeURIComponent(taskId), {
-      headers: { Authorization: 'Bearer ' + process.env.MESHY_API_KEY }
-    });
-    const result = await apiRes.json().catch(() => ({}));
-    if (!apiRes.ok) {
-      return json(res, apiRes.status, { error: meshyErrorMessage(apiRes.status, result) });
-    }
-
-    const modelUrls = {};
-    for (const format of ['glb']) {
-      if (result.model_urls && result.model_urls[format]) {
-        modelUrls[format] = result.model_urls[format];
-      }
-    }
-
-    json(res, 200, {
-      taskId: result.id || taskId,
-      status: result.status || 'PENDING',
-      progress: Number.isFinite(result.progress) ? result.progress : 0,
-      modelUrls,
-      viewerUrl: modelUrls.glb ? '/api/3d/' + encodeURIComponent(taskId) + '/model.glb' : '',
-      thumbnailUrl: result.thumbnail_url || '',
-      expiresAt: result.expires_at || null,
-      error: result.task_error && result.task_error.message ? result.task_error.message : ''
-    });
-  } catch (error) {
-    console.error(error);
-    json(res, 500, { error: error.message || '3D 작업 상태를 확인하지 못했어요.' });
-  }
-}
-
-async function createRemesh(req, res) {
-  if (!process.env.MESHY_API_KEY) {
-    return json(res, 503, { error: '서버에 MESHY_API_KEY가 설정되지 않았어요.' });
-  }
-
-  try {
-    const body = await readJson(req);
-    const taskId = body.taskId;
-    const modelUrl = validMeshyModelUrl(body.modelUrl);
-    if (!isValidMeshyTaskId(taskId) && !modelUrl) {
-      return json(res, 400, { error: '리토폴로지할 3D 작업 ID 또는 GLB 주소가 필요해요.' });
-    }
-
-    const startRemesh = async input => {
-      const apiRes = await fetch(MESHY_REMESH_API, {
-        method: 'POST',
-        headers: {
-          Authorization: 'Bearer ' + process.env.MESHY_API_KEY,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ...input,
-          target_formats: ['glb'],
-          topology: 'quad',
-          target_polycount: REMESH_TARGET_POLYCOUNT
-        })
-      });
-      return { apiRes, result: await apiRes.json().catch(() => ({})) };
-    };
-
-    let attempt = await startRemesh(isValidMeshyTaskId(taskId)
-      ? { input_task_id: taskId }
-      : { model_url: modelUrl });
-
-    // If Meshy rejects a source task ID, retry with its signed GLB URL.
-    if (!attempt.apiRes.ok && attempt.apiRes.status === 400 && modelUrl && isValidMeshyTaskId(taskId)) {
-      attempt = await startRemesh({ model_url: modelUrl });
-    }
-
-    const { apiRes, result } = attempt;
-    if (!apiRes.ok) {
-      return json(res, apiRes.status, { error: meshyErrorMessage(apiRes.status, result) });
-    }
-    if (!isValidMeshyTaskId(result.result)) {
-      throw new Error('Meshy 리토폴로지 작업 ID를 받지 못했어요.');
-    }
-    json(res, 202, { taskId: result.result, targetPolycount: REMESH_TARGET_POLYCOUNT });
-  } catch (error) {
-    console.error(error);
-    json(res, 500, { error: error.message || '리토폴로지 요청을 시작하지 못했어요.' });
-  }
-}
-
-async function getRemesh(req, res, taskId) {
-  if (!process.env.MESHY_API_KEY) {
-    return json(res, 503, { error: '서버에 MESHY_API_KEY가 설정되지 않았어요.' });
-  }
-  if (!isValidMeshyTaskId(taskId)) {
-    return json(res, 400, { error: '올바르지 않은 리토폴로지 작업 ID예요.' });
-  }
-
-  try {
-    const apiRes = await fetch(MESHY_REMESH_API + '/' + encodeURIComponent(taskId), {
-      headers: { Authorization: 'Bearer ' + process.env.MESHY_API_KEY }
-    });
-    const result = await apiRes.json().catch(() => ({}));
-    if (!apiRes.ok) {
-      return json(res, apiRes.status, { error: meshyErrorMessage(apiRes.status, result) });
-    }
-
-    const modelUrls = {};
-    for (const format of ['glb']) {
-      if (result.model_urls && result.model_urls[format]) modelUrls[format] = result.model_urls[format];
-    }
-    json(res, 200, {
-      taskId: result.id || taskId,
-      status: result.status || 'PENDING',
-      progress: result.status === 'SUCCEEDED' ? 100 : (Number.isFinite(result.progress) ? result.progress : 0),
-      modelUrls,
-      viewerUrl: modelUrls.glb ? '/api/remesh/' + encodeURIComponent(taskId) + '/model.glb' : '',
-      thumbnailUrl: result.thumbnail_url || '',
-      error: result.task_error && result.task_error.message ? result.task_error.message : '',
-      consumedCredits: Number.isFinite(result.consumed_credits) ? result.consumed_credits : null,
-      topology: 'quad',
-      targetPolycount: Number.isInteger(result.target_polycount) ? result.target_polycount : null
-    });
-  } catch (error) {
-    console.error(error);
-    json(res, 500, { error: error.message || '리토폴로지 상태를 확인하지 못했어요.' });
-  }
-}
-
-function fileTimestamp(date = new Date()) {
-  const values = {};
-  for (const part of new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Seoul',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23'
-  }).formatToParts(date)) {
-    if (part.type !== 'literal') values[part.type] = part.value;
-  }
-  return values.year + values.month + values.day + '_' + values.hour + values.minute + values.second;
-}
-
-async function stream3dAsset(req, res, taskApi, taskId, format, downloadStamp, filenamePrefix) {
-  if (!process.env.MESHY_API_KEY) {
-    return json(res, 503, { error: '서버에 MESHY_API_KEY가 설정되지 않았어요.' });
-  }
-  if (!isValidMeshyTaskId(taskId)) {
-    return json(res, 400, { error: '올바르지 않은 Meshy 작업 ID예요.' });
-  }
-
-  try {
-    const taskRes = await fetch(taskApi + '/' + encodeURIComponent(taskId), {
-      headers: { Authorization: 'Bearer ' + process.env.MESHY_API_KEY }
-    });
-    const task = await taskRes.json().catch(() => ({}));
-    if (!taskRes.ok) {
-      return json(res, taskRes.status, { error: meshyErrorMessage(taskRes.status, task) });
-    }
-
-    const assetUrl = task.model_urls && task.model_urls[format];
-    if (task.status !== 'SUCCEEDED' || !assetUrl) {
-      return json(res, 409, { error: '아직 ' + format.toUpperCase() + ' 모델이 준비되지 않았어요.' });
-    }
-
-    const parsedUrl = new URL(assetUrl);
-    if (parsedUrl.protocol !== 'https:') {
-      return json(res, 502, { error: 'Meshy가 올바른 모델 주소를 반환하지 않았어요.' });
-    }
-
-    const assetHeaders = { Accept: '*/*' };
-    if (req.headers.range) assetHeaders.Range = req.headers.range;
-    const modelRes = await fetch(assetUrl, { headers: assetHeaders });
-    if (!modelRes.ok || !modelRes.body) {
-      return json(res, 502, { error: 'Meshy에서 ' + format.toUpperCase() + ' 파일을 내려받지 못했어요.' });
-    }
-
-    const isDownload = Boolean(downloadStamp);
-    const safeStamp = /^\d{8}_\d{6}$/.test(downloadStamp || '') ? downloadStamp : fileTimestamp();
-    const filename = isDownload
-      ? filenamePrefix + '_' + safeStamp + '.' + format
-      : filenamePrefix + '_preview.' + format;
-    const headers = {
-      'Content-Type': modelRes.headers.get('content-type') || 'application/octet-stream',
-      'Content-Disposition': (isDownload ? 'attachment' : 'inline') + '; filename="' + filename + '"',
-      'Cache-Control': isDownload ? 'private, no-store' : 'private, max-age=300'
-    };
-    for (const name of ['content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
-      const value = modelRes.headers.get(name);
-      if (value) headers[name] = value;
-    }
-
-    res.writeHead(modelRes.status, headers);
-    const stream = Readable.fromWeb(modelRes.body);
-    stream.on('error', error => {
-      console.error(error);
-      res.destroy(error);
-    });
-    stream.pipe(res);
-  } catch (error) {
-    console.error(error);
-    if (!res.headersSent) {
-      json(res, 500, { error: error.message || '3D 모델 파일을 불러오지 못했어요.' });
-    } else {
-      res.destroy(error);
-    }
+    return json(res, 502, { error: error.message || '잠시 후 다시 시도해주세요.' });
   }
 }
 
 const server = http.createServer((req, res) => {
-  if (req.method === 'POST' && req.url === '/api/generate') return generate(req, res);
-  if (req.method === 'POST' && req.url === '/api/3d') return create3d(req, res);
-  if (req.method === 'POST' && req.url === '/api/remesh') return createRemesh(req, res);
-  if (req.method === 'GET' && req.url.split('?')[0] === '/api/version') return json(res, 200, APP_INFO);
-
-  const requestUrl = new URL(req.url, 'http://localhost');
-  const cleanUrl = requestUrl.pathname;
-  const meshyModelMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/3d\/([^/]+)\/model\.(glb)$/);
-  if (meshyModelMatch) {
-    const stamp = requestUrl.searchParams.get('download') === '1'
-      ? requestUrl.searchParams.get('stamp') || fileTimestamp()
-      : '';
-    return stream3dAsset(req, res, MESHY_API, decodeTaskId(meshyModelMatch[1]), meshyModelMatch[2].toLowerCase(), stamp, 'pet3D');
+  let clean;
+  try {
+    clean = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+  } catch {
+    return json(res, 400, { error: '요청 주소가 올바르지 않아요.' });
   }
-
-  const remeshModelMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/remesh\/([^/]+)\/model\.(glb)$/);
-  if (remeshModelMatch) {
-    const stamp = requestUrl.searchParams.get('download') === '1'
-      ? requestUrl.searchParams.get('stamp') || fileTimestamp()
-      : '';
-    return stream3dAsset(req, res, MESHY_REMESH_API, decodeTaskId(remeshModelMatch[1]), remeshModelMatch[2].toLowerCase(), stamp, 'pet3D');
-  }
-
-  const meshyTaskMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/3d\/([^/]+)$/);
-  if (meshyTaskMatch) return get3d(req, res, decodeTaskId(meshyTaskMatch[1]));
-
-  const remeshTaskMatch = req.method === 'GET' && cleanUrl.match(/^\/api\/remesh\/([^/]+)$/);
-  if (remeshTaskMatch) return getRemesh(req, res, decodeTaskId(remeshTaskMatch[1]));
-
+  if (req.method === 'POST' && clean === '/api/generate') return generate(req, res);
+  if (req.method === 'GET' && clean === '/api/version') return json(res, 200, APP_INFO);
+  if (clean.startsWith('/api/')) return json(res, 404, { error: '요청한 기능을 찾을 수 없어요.' });
   if (req.method !== 'GET') return json(res, 405, { error: '허용되지 않은 요청이에요.' });
 
-  const clean = decodeURIComponent(req.url.split('?')[0]);
-  const target = path.join(PUBLIC, clean === '/' ? 'index.html' : clean);
-  if (!target.startsWith(PUBLIC)) return json(res, 403, { error: '접근할 수 없어요.' });
+  const target = path.resolve(PUBLIC, '.' + (clean === '/' ? '/index.html' : clean));
+  const relative = path.relative(PUBLIC, target);
+  if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) {
+    return json(res, 403, { error: '접근할 수 없어요.' });
+  }
   fs.readFile(target, (error, data) => {
     if (error) return json(res, 404, { error: '페이지를 찾을 수 없어요.' });
     res.writeHead(200, { 'Content-Type': MIME[path.extname(target)] || 'application/octet-stream' });
