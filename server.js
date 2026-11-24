@@ -12,6 +12,7 @@ const APP_INFO = {
 };
 const OUTPUT_WIDTH = 2304;
 const OUTPUT_HEIGHT = 1728;
+const MAX_SUBJECT_HEIGHT = Math.floor(OUTPUT_HEIGHT * 0.60);
 const BACKGROUND_RGB = { red: 0, green: 177, blue: 64 }; // #00B140
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -107,6 +108,71 @@ const PROMPT = `첨부한 개체 참고 사진은 모두 같은 동물 한 마�
 
 최종 결과는 균일한 녹색(#00B140) 바닥과 배경 위에 합성됩니다. 지금은 동물만 투명 배경의 PNG로 생성해 주세요. 발이 수평 바닥에 닿은 자세로 서되, 동물 바깥의 여백과 다리 사이에는 아무것도 그리지 말고 완전히 투명하게 비워 주세요. 발밑 접지 그림자를 포함한 모든 바닥 그림자, 비침과 반사상, 녹색 색번짐은 제외해 주세요. 동물에만 부드러운 중성 스튜디오 조명을 비춰 검은 털을 포함해 원래의 털색과 결을 보존하고, 눈의 자연스러운 반사광과 코·발의 질감을 실제 사진처럼 표현해 주세요. 한 프레임에는 이 동물 한 마리만 담고 목줄, 하네스, 이름표, 소품, 사람, 글자, 화면 아이콘은 제외해 주세요.`;
 
+function getSubjectBounds({ data, width, height }) {
+  let left = width, right = -1, top = height, bottom = -1;
+  let hasBackground = false;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (data[(y * width + x) * 4 + 3] === 0) {
+        hasBackground = true;
+        continue;
+      }
+      left = Math.min(left, x);
+      right = Math.max(right, x);
+      top = Math.min(top, y);
+      bottom = y;
+    }
+  }
+  if (!hasBackground || right < left) {
+    throw new Error('동물과 투명 배경을 구분할 수 있는 이미지를 받지 못했어요.');
+  }
+  return { left, top, width: right - left + 1, height: bottom - top + 1 };
+}
+
+function limitSubjectHeight(image) {
+  const box = getSubjectBounds(image);
+  if (box.height <= MAX_SUBJECT_HEIGHT) return;
+
+  const height = MAX_SUBJECT_HEIGHT;
+  const width = Math.max(1, Math.round(box.width * height / box.height));
+  const left = Math.floor((image.width - width) / 2);
+  const top = Math.floor((image.height - height) / 2);
+  const xStep = box.width / width;
+  const yStep = box.height / height;
+  const output = Buffer.alloc(image.data.length);
+
+  // Average each source footprint using alpha as coverage to preserve fine fur.
+  for (let y = 0; y < height; y++) {
+    const y0 = box.top + y * yStep;
+    const y1 = Math.min(box.top + (y + 1) * yStep, box.top + box.height);
+    for (let x = 0; x < width; x++) {
+      const x0 = box.left + x * xStep;
+      const x1 = Math.min(box.left + (x + 1) * xStep, box.left + box.width);
+      let alpha = 0, red = 0, green = 0, blue = 0;
+      for (let sy = Math.floor(y0); sy < y1; sy++) {
+        const h = Math.min(sy + 1, y1) - Math.max(sy, y0);
+        for (let sx = Math.floor(x0); sx < x1; sx++) {
+          const w = Math.min(sx + 1, x1) - Math.max(sx, x0);
+          const src = (sy * image.width + sx) * 4;
+          const coverage = h * w * image.data[src + 3];
+          alpha += coverage;
+          red += coverage * image.data[src];
+          green += coverage * image.data[src + 1];
+          blue += coverage * image.data[src + 2];
+        }
+      }
+      if (alpha > 0) {
+        const dest = ((top + y) * image.width + left + x) * 4;
+        output[dest] = Math.round(red / alpha);
+        output[dest + 1] = Math.round(green / alpha);
+        output[dest + 2] = Math.round(blue / alpha);
+        output[dest + 3] = Math.round(alpha / (xStep * yStep));
+      }
+    }
+  }
+  image.data = output;
+}
+
 async function composeOutput(b64) {
   if (typeof b64 !== 'string' || !b64) throw new Error('완성 이미지를 받지 못했어요.');
   const png = Buffer.from(b64, 'base64');
@@ -121,17 +187,7 @@ async function composeOutput(b64) {
   await new Promise((resolve, reject) => {
     image.parse(png, error => error ? reject(error) : resolve());
   });
-  let hasBackground = false;
-  let hasSubject = false;
-  for (let i = 3; i < image.data.length; i += 4) {
-    const alpha = image.data[i];
-    if (alpha === 0) hasBackground = true;
-    if (alpha > 0) hasSubject = true;
-    if (hasBackground && hasSubject) break;
-  }
-  if (!hasBackground || !hasSubject) {
-    throw new Error('동물과 투명 배경을 구분할 수 있는 이미지를 받지 못했어요.');
-  }
+  limitSubjectHeight(image);
   // Encoding RGBA as RGB blends the fur edges against the chosen background.
   return new Promise((resolve, reject) => {
     const chunks = [];

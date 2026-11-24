@@ -46,6 +46,43 @@ function pixelAt(png, x, y) {
   return Array.from(png.data.subarray(offset, offset + 4));
 }
 
+function foregroundFixture({ left, top, width, height }) {
+  const png = new PNG({ width: 2304, height: 1728 });
+  png.data.fill(0);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      let rgba = [97, 58, 23, 255];
+      if (x < 12 || y < 12 || x >= width - 12 || y >= height - 12) {
+        rgba = [200, 100, 50, 128];
+      } else if (y > height * 0.35 && y < height * 0.65) {
+        if (x > width * 0.2 && x < width * 0.4) rgba = [0, 0, 0, 255];
+        if (x > width * 0.6 && x < width * 0.8) rgba = [12, 34, 230, 255];
+      }
+      png.data.set(rgba, ((top + y) * png.width + left + x) * 4);
+    }
+  }
+  return PNG.sync.write(png).toString('base64');
+}
+
+function foregroundBounds(png) {
+  let left = png.width;
+  let top = png.height;
+  let right = -1;
+  let bottom = -1;
+  for (let y = 0; y < png.height; y += 1) {
+    for (let x = 0; x < png.width; x += 1) {
+      const offset = (y * png.width + x) * 4;
+      assert.equal(png.data[offset + 3], 255, 'the whole output must stay opaque');
+      if (png.data[offset] === 0 && png.data[offset + 1] === 177 && png.data[offset + 2] === 64) continue;
+      left = Math.min(left, x);
+      right = Math.max(right, x);
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y);
+    }
+  }
+  return { left, top, right, bottom, width: right - left + 1, height: bottom - top + 1 };
+}
+
 let calls;
 let upstream;
 
@@ -156,6 +193,58 @@ test('uses one image API call and composites a 2304×1728 opaque PNG onto exact 
     assert.equal(reference.type, 'image/png');
     assert.deepEqual(Buffer.from(await reference.arrayBuffer()), Buffer.from(pngBase64, 'base64'));
   }
+});
+
+test('shrinks a tall offset foreground to at most 60% height, centered with its proportions and fur edges preserved', async () => {
+  const original = { left: 80, top: 20, width: 600, height: 1600 };
+  upstream = () => Response.json({ data: [{ b64_json: foregroundFixture(original) }] });
+  const response = await request('/api/generate', { method: 'POST', body: { images: [image] } });
+  assert.equal(response.status, 200, response.body.error);
+  const output = decodedOutput(response.body);
+  const bounds = foregroundBounds(output);
+  const maxHeight = Math.floor(1728 * 0.60);
+  assert.equal(output.width, 2304);
+  assert.equal(output.height, 1728);
+  assert.equal(bounds.height, maxHeight, 'an oversized subject should fit the 1036-pixel height cap');
+  assert.ok(Math.abs(bounds.width - original.width * maxHeight / original.height) <= 1,
+    'width must use the same scale as height, within integer pixel rounding');
+  assert.ok(Math.abs(bounds.left + bounds.right - (output.width - 1)) <= 1,
+    'the resized foreground must be horizontally centered');
+  assert.ok(Math.abs(bounds.top + bounds.bottom - (output.height - 1)) <= 1,
+    'the resized foreground must be vertically centered');
+
+  const middleY = bounds.top + Math.floor(bounds.height / 2);
+  assert.deepEqual(pixelAt(output, bounds.left + Math.floor(bounds.width * 0.3), middleY), [0, 0, 0, 255],
+    'opaque black fur must survive scaling and must not become background');
+  assert.deepEqual(pixelAt(output, bounds.left + Math.floor(bounds.width * 0.5), middleY), [97, 58, 23, 255]);
+  assert.deepEqual(pixelAt(output, bounds.left + Math.floor(bounds.width * 0.7), middleY), [12, 34, 230, 255]);
+  assert.deepEqual(pixelAt(output, bounds.left + 2, middleY), [100, 138, 57, 255],
+    'the semi-transparent boundary must be alpha-composited once onto #00B140');
+  assert.deepEqual(pixelAt(output, bounds.left + Math.floor(bounds.width / 2), bounds.top + 2), [100, 138, 57, 255]);
+  for (const [x, y] of [[0, 0], [2303, 1727], [80, 20], [bounds.left - 1, middleY]]) {
+    assert.deepEqual(pixelAt(output, x, y), [0, 177, 64, 255], 'empty canvas stays exactly #00B140');
+  }
+  assert.equal(calls.length, 1, 'resizing and compositing must not request another paid generation');
+});
+
+test('a foreground already at the 60% limit keeps its original size and offset position', async () => {
+  const original = { left: 150, top: 40, width: 120, height: Math.floor(1728 * 0.60) };
+  upstream = () => Response.json({ data: [{ b64_json: foregroundFixture(original) }] });
+  const response = await request('/api/generate', { method: 'POST', body: { images: [image] } });
+  assert.equal(response.status, 200, response.body.error);
+  const output = decodedOutput(response.body);
+  assert.deepEqual(foregroundBounds(output), {
+    left: original.left,
+    top: original.top,
+    right: original.left + original.width - 1,
+    bottom: original.top + original.height - 1,
+    width: original.width,
+    height: original.height
+  });
+  assert.deepEqual(pixelAt(output, original.left + 2, original.top + 500), [100, 138, 57, 255]);
+  assert.deepEqual(pixelAt(output, original.left + 60, original.top + 500), [97, 58, 23, 255]);
+  assert.deepEqual(pixelAt(output, 1152, 864), [0, 177, 64, 255], 'a small subject must not be moved to the center');
+  assert.equal(calls.length, 1);
 });
 
 test('requests a small single-subject transparent wideshot for later #00B140 compositing', async () => {
