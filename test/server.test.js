@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const { PassThrough, Writable } = require('node:stream');
-const { deflateSync } = require('node:zlib');
+const { PNG } = require('pngjs');
 const { after, beforeEach, afterEach, test } = require('node:test');
 
 const originalApiKey = process.env.OPENAI_API_KEY;
@@ -13,38 +13,39 @@ const packageInfo = require('../package.json');
 const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aF1kAAAAASUVORK5CYII=';
 const image = 'data:image/png;base64,' + pngBase64;
 
-function createPng(width, height) {
-  function chunk(type, data) {
-    const contents = Buffer.concat([Buffer.from(type), data]);
-    let crc = 0xffffffff;
-    for (const byte of contents) {
-      crc ^= byte;
-      for (let bit = 0; bit < 8; bit += 1) {
-        crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
-      }
-    }
-    const length = Buffer.alloc(4);
-    length.writeUInt32BE(data.length);
-    const checksum = Buffer.alloc(4);
-    checksum.writeUInt32BE((crc ^ 0xffffffff) >>> 0);
-    return Buffer.concat([length, contents, checksum]);
+function createPng(width, height, { opaque = false, colorType = 6, pixels = [] } = {}) {
+  const png = new PNG({ width, height });
+  png.data.fill(0);
+  if (opaque) {
+    for (let offset = 3; offset < png.data.length; offset += 4) png.data[offset] = 255;
   }
-  const header = Buffer.alloc(13);
-  header.writeUInt32BE(width, 0);
-  header.writeUInt32BE(height, 4);
-  header[8] = 8;
-  header[9] = 2; // Opaque RGB; zero-filled scanlines make a black fixture.
-  const pixels = Buffer.alloc((width * 3 + 1) * height);
-  return Buffer.concat([
-    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-    chunk('IHDR', header),
-    chunk('IDAT', deflateSync(pixels)),
-    chunk('IEND', Buffer.alloc(0))
-  ]);
+  for (const { x, y, rgba } of pixels) {
+    png.data.set(rgba, (y * width + x) * 4);
+  }
+  return PNG.sync.write(png, { colorType });
 }
 
-const outputBase64 = createPng(2304, 1728).toString('base64');
-const outputImage = 'data:image/png;base64,' + outputBase64;
+const fixturePixels = [
+  { x: 1152, y: 864, rgba: [0, 0, 0, 255], expected: [0, 0, 0, 255] },
+  { x: 1153, y: 864, rgba: [97, 58, 23, 255], expected: [97, 58, 23, 255] },
+  { x: 1154, y: 864, rgba: [12, 34, 230, 255], expected: [12, 34, 230, 255] },
+  { x: 1155, y: 864, rgba: [200, 100, 50, 128], expected: [100, 138, 57, 255] },
+  { x: 1156, y: 864, rgba: [0, 0, 0, 64], expected: [0, 133, 48, 255] },
+  // RGB values underneath zero alpha must not leak into the final background.
+  { x: 0, y: 0, rgba: [255, 10, 200, 0], expected: [0, 177, 64, 255] }
+];
+const outputBase64 = createPng(2304, 1728, { pixels: fixturePixels }).toString('base64');
+
+function decodedOutput(body) {
+  assert.match(body.image, /^data:image\/png;base64,/);
+  return PNG.sync.read(Buffer.from(body.image.split(',')[1], 'base64'));
+}
+
+function pixelAt(png, x, y) {
+  const offset = (y * png.width + x) * 4;
+  return Array.from(png.data.subarray(offset, offset + 4));
+}
+
 let calls;
 let upstream;
 
@@ -117,13 +118,27 @@ after(() => {
   else process.env.OPENAI_API_KEY = originalApiKey;
 });
 
-test('generates one 2304×1728 PNG using only the uploaded photos and returns its original bytes', async () => {
+test('uses one image API call and composites a 2304×1728 opaque PNG onto exact #00B140', async () => {
   const response = await request('/api/generate', {
     method: 'POST', body: { images: [image, image] }
   });
 
-  assert.equal(response.status, 200);
-  assert.deepEqual(response.body, { image: outputImage });
+  assert.equal(response.status, 200, response.body.error);
+  const output = decodedOutput(response.body);
+  assert.equal(output.width, 2304);
+  assert.equal(output.height, 1728);
+  for (const { x, y, expected } of fixturePixels) {
+    assert.deepEqual(pixelAt(output, x, y), expected, 'composited pixel at ' + x + ',' + y);
+  }
+  const subjectOffsets = new Set(fixturePixels.map(({ x, y }) => (y * output.width + x) * 4));
+  for (let offset = 0; offset < output.data.length; offset += 4) {
+    assert.equal(output.data[offset + 3], 255, 'the downloadable PNG must be fully opaque');
+    if (!subjectOffsets.has(offset)) {
+      assert.equal(output.data[offset], 0);
+      assert.equal(output.data[offset + 1], 177);
+      assert.equal(output.data[offset + 2], 64);
+    }
+  }
   assert.equal(calls.length, 1, 'one generation must make exactly one paid API request');
   assert.equal(calls[0].url, 'https://api.openai.com/v1/images/edits');
   assert.equal(calls[0].options.method, 'POST');
@@ -131,7 +146,7 @@ test('generates one 2304×1728 PNG using only the uploaded photos and returns it
   assert.ok(form instanceof FormData);
   assert.equal(form.get('size'), '2304x1728');
   assert.equal(form.get('quality'), 'high');
-  assert.equal(form.get('background'), 'opaque');
+  assert.equal(form.get('background'), 'transparent');
   assert.equal(form.get('output_format'), 'png');
   assert.equal(form.get('n'), '1');
   const references = form.getAll('image[]');
@@ -143,17 +158,18 @@ test('generates one 2304×1728 PNG using only the uploaded photos and returns it
   }
 });
 
-test('the generation request carries the single-subject black-background wideshot requirements', async () => {
+test('requests a small single-subject transparent wideshot for later #00B140 compositing', async () => {
   const response = await request('/api/generate', { method: 'POST', body: { images: [image] } });
-  assert.equal(response.status, 200);
+  assert.equal(response.status, 200, response.body.error);
   const prompt = calls[0].options.body.get('prompt');
   assert.match(prompt, /한 마리/);
   assert.match(prompt, /20\s*[°도]/);
   assert.match(prompt, /4\s*:\s*3/);
   assert.match(prompt, /고정 와이드숏/);
   assert.match(prompt, /프레임 높이의 약 35%/);
-  assert.match(prompt, /검정 여백은 합쳐서 프레임 높이의 60~70%/);
-  assert.match(prompt, /#000000/);
+  assert.match(prompt, /위아래 여백은 합쳐서 프레임 높이의 60~70%/);
+  assert.match(prompt, /투명/);
+  assert.match(prompt, /#00B140/i);
   assert.match(prompt, /그림자[\s\S]*반사[\s\S]*제외/);
   assert.equal(calls.length, 1);
 });
@@ -163,7 +179,7 @@ test('accepts both one and the supported maximum of six reference photos', async
     const response = await request('/api/generate', {
       method: 'POST', body: { images: Array(count).fill(image) }
     });
-    assert.equal(response.status, 200);
+    assert.equal(response.status, 200, response.body.error);
     assert.equal(calls.at(-1).options.body.getAll('image[]').length, count);
   }
   assert.equal(calls.length, 2);
@@ -245,6 +261,19 @@ test('rejects invalid PNGs and wrong dimensions instead of stretching or regener
     assert.equal(response.body.image, undefined);
   }
   assert.equal(calls.length, invalidOutputs.length);
+});
+
+test('rejects opaque RGB and fully opaque RGBA output without replacing black fur or regenerating', async () => {
+  for (const colorType of [2, 6]) {
+    const b64_json = createPng(2304, 1728, { opaque: true, colorType }).toString('base64');
+    upstream = () => Response.json({ data: [{ b64_json }] });
+    const callsBefore = calls.length;
+    const response = await request('/api/generate', { method: 'POST', body: { images: [image] } });
+    assert.equal(response.status, 502, 'opaque PNG color type ' + colorType);
+    assert.match(response.body.error, /투명|알파/);
+    assert.equal(response.body.image, undefined);
+    assert.equal(calls.length - callsBefore, 1, 'opaque output must not trigger another paid generation');
+  }
 });
 
 test('serves its own package version without an upstream request', async () => {

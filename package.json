@@ -1,12 +1,17 @@
 {
   "name": "osupet2dvideo",
-  "version": "1.0.1",
-  "appUpdatedAt": "2026-11-23T13:10:29+09:00",
+  "version": "1.0.2",
+  "appUpdatedAt": "2026-11-24T11:37:30+09:00",
   "private": true,
   "scripts": {
     "dev": "node server.js",
     "start": "node server.js",
     "test": "node --test"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "pngjs": "7.0.0"
+  }
 }

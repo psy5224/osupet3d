@@ -1,6 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { PNG } = require('pngjs');
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC = path.join(__dirname, 'public');
@@ -11,6 +12,7 @@ const APP_INFO = {
 };
 const OUTPUT_WIDTH = 2304;
 const OUTPUT_HEIGHT = 1728;
+const BACKGROUND_RGB = { red: 0, green: 177, blue: 64 }; // #00B140
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -89,7 +91,7 @@ const PROMPT = `첨부한 개체 참고 사진은 모두 같은 동물 한 마�
 
 머리, 목, 몸통은 하나의 축을 따라 같은 방향을 향합니다. 머리를 좌우로 돌리거나 기울이지 않습니다. 입은 자연스럽게 다물고, 혀가 보이지 않는 편안한 기본 표정으로 표현해 주세요.
 
-네 발로 체중을 고르게 지탱하는 편안한 자세로 서 주세요. 앞발은 양쪽 어깨 너비 정도로, 뒷발은 양쪽 골반 너비 정도로 벌려 주세요. 약 20° 앞 사선 구도에서 앞발 두 개는 화면 왼쪽 앞에, 뒷발 두 개는 오른쪽 뒤에 놓이게 해 주세요. 카메라 위치를 미세하게 조정해 다리 사이로 검정 배경이 보이고 네 발의 윤곽이 각각 구분되게 해 주세요. 무릎과 발끝은 자연스럽게 앞을 향하게 해 주세요.
+네 발로 체중을 고르게 지탱하는 편안한 자세로 서 주세요. 앞발은 양쪽 어깨 너비 정도로, 뒷발은 양쪽 골반 너비 정도로 벌려 주세요. 약 20° 앞 사선 구도에서 앞발 두 개는 화면 왼쪽 앞에, 뒷발 두 개는 오른쪽 뒤에 놓이게 해 주세요. 카메라 위치를 미세하게 조정해 다리 사이로 빈 공간이 보이고 네 발의 윤곽이 각각 구분되게 해 주세요. 무릎과 발끝은 자연스럽게 앞을 향하게 해 주세요.
 
 개체의 특징
 
@@ -101,11 +103,11 @@ const PROMPT = `첨부한 개체 참고 사진은 모두 같은 동물 한 마�
 
 프레이밍과 조명
 
-가로 4:3 고정 와이드숏 한 컷입니다. 카메라를 충분히 멀리 두어 동물 한 마리의 전신이 화면 중앙에 작게 보이도록 촬영해 주세요. 가장 낮은 발끝에서 가장 높은 귀 끝이나 꼬리 끝까지의 높이는 프레임 높이의 약 35%(허용 범위 30~40%)로 잡아 주세요. 동물 위와 아래의 검정 여백은 합쳐서 프레임 높이의 60~70%가 되도록 고르게 남기고, 좌우에도 넉넉한 검정 공간을 두세요. 귀 끝, 네 발의 발끝과 확인되는 꼬리 끝까지 모두 담고, 촬영 후 확대하거나 잘라내지 마세요.
+가로 4:3 고정 와이드숏 한 컷입니다. 카메라를 충분히 멀리 두어 동물 한 마리의 전신이 화면 중앙에 작게 보이도록 촬영해 주세요. 가장 낮은 발끝에서 가장 높은 귀 끝이나 꼬리 끝까지의 높이는 프레임 높이의 약 35%(허용 범위 30~40%)로 잡아 주세요. 위아래 여백은 합쳐서 프레임 높이의 60~70%가 되도록 고르게 남기고, 좌우에도 넉넉한 여백을 두세요. 귀 끝, 네 발의 발끝과 확인되는 꼬리 끝까지 모두 담고, 촬영 후 확대하거나 잘라내지 마세요.
 
-배경과 바닥 전체는 경계선이나 수평선 없이 이어지는 균일한 순검정(#000000)입니다. 동물 바깥의 여백과 다리 사이도 같은 검정으로 채워 주세요. 발밑 접지 그림자를 포함한 모든 바닥 그림자, 비침과 반사상, 광택, 회색 그라데이션, 무늬는 제외해 주세요. 동물 자체에만 부드러운 스튜디오 조명을 비춰 검은 털도 원래의 색과 결이 드러나도록 하고, 눈의 자연스러운 반사광과 코·발의 질감은 실제 사진처럼 표현해 주세요. 한 프레임에는 이 동물 한 마리만 담고 목줄, 하네스, 이름표, 소품, 사람, 글자, 화면 아이콘은 제외해 주세요.`;
+최종 결과는 균일한 녹색(#00B140) 바닥과 배경 위에 합성됩니다. 지금은 동물만 투명 배경의 PNG로 생성해 주세요. 발이 수평 바닥에 닿은 자세로 서되, 동물 바깥의 여백과 다리 사이에는 아무것도 그리지 말고 완전히 투명하게 비워 주세요. 발밑 접지 그림자를 포함한 모든 바닥 그림자, 비침과 반사상, 녹색 색번짐은 제외해 주세요. 동물에만 부드러운 중성 스튜디오 조명을 비춰 검은 털을 포함해 원래의 털색과 결을 보존하고, 눈의 자연스러운 반사광과 코·발의 질감을 실제 사진처럼 표현해 주세요. 한 프레임에는 이 동물 한 마리만 담고 목줄, 하네스, 이름표, 소품, 사람, 글자, 화면 아이콘은 제외해 주세요.`;
 
-function validateOutput(b64) {
+async function composeOutput(b64) {
   if (typeof b64 !== 'string' || !b64) throw new Error('완성 이미지를 받지 못했어요.');
   const png = Buffer.from(b64, 'base64');
   const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -115,6 +117,29 @@ function validateOutput(b64) {
   if (png.readUInt32BE(16) !== OUTPUT_WIDTH || png.readUInt32BE(20) !== OUTPUT_HEIGHT) {
     throw new Error('요청한 4:3 크기의 이미지를 받지 못했어요. 다시 시도해주세요.');
   }
+  const image = new PNG({ colorType: 2, inputColorType: 6, bgColor: BACKGROUND_RGB });
+  await new Promise((resolve, reject) => {
+    image.parse(png, error => error ? reject(error) : resolve());
+  });
+  let hasBackground = false;
+  let hasSubject = false;
+  for (let i = 3; i < image.data.length; i += 4) {
+    const alpha = image.data[i];
+    if (alpha === 0) hasBackground = true;
+    if (alpha > 0) hasSubject = true;
+    if (hasBackground && hasSubject) break;
+  }
+  if (!hasBackground || !hasSubject) {
+    throw new Error('동물과 투명 배경을 구분할 수 있는 이미지를 받지 못했어요.');
+  }
+  // Encoding RGBA as RGB blends the fur edges against the chosen background.
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    image.on('data', chunk => chunks.push(chunk));
+    image.once('error', reject);
+    image.once('end', () => resolve(Buffer.concat(chunks).toString('base64')));
+    image.pack();
+  });
 }
 
 async function generate(req, res) {
@@ -143,7 +168,7 @@ async function generate(req, res) {
   form.append('quality', 'high');
   form.append('size', OUTPUT_WIDTH + 'x' + OUTPUT_HEIGHT);
   form.append('n', '1');
-  form.append('background', 'opaque');
+  form.append('background', 'transparent');
   form.append('output_format', 'png');
 
   try {
@@ -157,8 +182,8 @@ async function generate(req, res) {
       throw new Error((result.error && result.error.message) || '이미지를 만들지 못했어요.');
     }
     const b64 = result.data && result.data[0] && result.data[0].b64_json;
-    validateOutput(b64);
-    return json(res, 200, { image: 'data:image/png;base64,' + b64 });
+    const output = await composeOutput(b64);
+    return json(res, 200, { image: 'data:image/png;base64,' + output });
   } catch (error) {
     return json(res, 502, { error: error.message || '잠시 후 다시 시도해주세요.' });
   }
